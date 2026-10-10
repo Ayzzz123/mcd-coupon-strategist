@@ -8,9 +8,12 @@
 [![MCP](https://img.shields.io/badge/MCP-mcp.mcd.cn-DA291C?style=flat-square)](https://mcp.mcd.cn)
 [![Tests](https://img.shields.io/badge/tests-4%20suites%20passing-3FB950?style=flat-square)](#测试)
 [![Token](https://img.shields.io/badge/Token-不需要-blue?style=flat-square)](#测试)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white)](#快速开始)
 
 **市面上的省钱工具都在回答「这一单怎么点最省」。**
 **我们多回答一个问题：「你正在白扔多少钱？」**
+
+[核心亮点](#我们做对了什么别人没做的) · [真实例子](#一个真实例子) · [快速开始](#快速开始) · [架构](#架构) · [设计原则](#设计原则)
 
 </div>
 
@@ -31,6 +34,14 @@
 - **券的沉默成本**：你手里有几张券即将过期？那就是正在流失的钱
 - **消费习惯画像**：近 N 个月花了多少、客单价是否偏高、哪些单品该改成套餐
 - 数据来自 `order-list` 历史订单 + `query-my-coupons` 券存量
+
+<div align="center">
+
+| 🍟 一次点餐平均省 | 💸 沉默成本发现 | 🧮 价格来源 | 🔑 使用门槛 |
+|:---:|:---:|:---:|:---:|
+| **3 ~ 13 元** | **一次几十元** | MCP 真实计价 | 无需 Token 即可跑测试 |
+
+</div>
 
 ---
 
@@ -267,8 +278,20 @@ python src/test_order_adapter.py  # 订单/券：退款过滤、券价值推算
 
 ---
 
-## 设计原则
+## 这个项目可能对你有用，如果……
 
+- 🌱 **你在做 MCP 相关的项目** —— [`MCP_INTEGRATION.md`](./MCP_INTEGRATION.md) 里记录了官方文档没写、但跑通链路必需的 **12 条实测调用契约**（门店查询的必传参数、`calculate-price` 的字段名、**「分 vs 元」两个接口方向相反的坑**），可以帮你少踩不少坑。
+- 🍔 **你想知道自己在外卖上花了多少** —— 链路 B 给出的是可以直接执行的结论：「你有 3 张券将在 1 天内过期，面值合计 ¥33.1」。
+- 🧩 **你在写 Agent / Skill 的评测** —— 这个项目是一个完整的、双链路的 MCP 编排示例，`saver.py` + `auditor.py` + `mcd_adapter.py` 分层清晰，可直接作为参考实现。
+- 💡 **你也在做麦当劳 MCP 的省钱工具** —— 欢迎对比，也欢迎来 issue 里讨论「券的沉默成本」这个视角。
+
+**如果它对你有帮助，一个 star 就是最好的反馈。** ⭐
+
+> 本项目为[麦当劳程序员创意开发大赛](https://open.mcd.cn/mcp)参赛作品，非麦当劳官方产品。
+
+---
+
+## 设计原则
 1. **绝不猜测价格** —— 所有金额均来自 MCP `calculate-price` 的返回结果。
 2. **宁可少报，不可编造** —— 券的价值若无法从菜单反查到原价，取 0 并在报告中标注，而不是估一个看起来合理的数。
 3. **省在哪要说清** —— 每个推荐都附带省钱归因，而不是只给一个数字。

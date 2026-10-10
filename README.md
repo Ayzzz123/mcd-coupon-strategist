@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/banner.svg" alt="麦麦省钱助手 — mcd-coupon-strategist" width="100%">
+<img src="./assets/banner.svg?v=2" alt="麦麦省钱助手 — mcd-coupon-strategist" width="100%">
 
 <br>
 
@@ -16,7 +16,7 @@
 
 ---
 
-<img src="./assets/demo-dual-view.svg" alt="同一个账号，两种问法：省这一单 vs 你正在白扔多少钱" width="100%">
+<img src="./assets/demo-dual-view.svg?v=2" alt="同一个账号，两种问法：省这一单 vs 你正在白扔多少钱" width="100%">
 
 基于麦当劳中国 MCP 打造的点餐成本助手，做两件事：
 
@@ -216,7 +216,7 @@
 
 ## 架构
 
-<img src="./assets/architecture.svg" alt="架构图：MCP 数据底座 → 适配层 → 链路 A 单次省钱 / 链路 B 消费审计" width="100%">
+<img src="./assets/architecture.svg?v=2" alt="架构图：MCP 数据底座 → 适配层 → 链路 A 单次省钱 / 链路 B 消费审计" width="100%">
 
 两条链路**共用同一套 MCP 数据底座**，但回答的是完全不同的问题：
 

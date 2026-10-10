@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-label="麦麦省钱助手 - 麦当劳点餐成本助手">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a0d08"/>
+      <stop offset="55%" stop-color="#2b1108"/>
+      <stop offset="100%" stop-color="#140806"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFC72C"/>
+      <stop offset="100%" stop-color="#FF8A00"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#DA291C"/>
+      <stop offset="100%" stop-color="#9E1B12"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="420" fill="url(#bg)"/>
+  <circle cx="1060" cy="70" r="230" fill="#DA291C" opacity="0.14"/>
+  <circle cx="130" cy="380" r="200" fill="#FFC72C" opacity="0.09"/>
+
+  <!-- 金色拱门 -->
+  <g transform="translate(96,96) scale(0.62)" filter="url(#glow)" opacity="0.95">
+    <path d="M0 300 L0 150 C0 40 44 0 78 0 C112 0 120 40 120 90 L120 300 L74 300 L74 96 C74 70 68 52 58 52 C44 52 42 76 42 110 L42 300 Z"
+          fill="url(#gold)"/>
+    <path d="M150 300 L150 110 C150 76 148 52 134 52 C124 52 118 70 118 96 L118 300 L72 300 L72 90 C72 40 80 0 114 0 C148 0 192 40 192 150 L192 300 Z"
+          fill="url(#gold)"/>
+  </g>
+
+  <!-- 标题 -->
+  <text x="360" y="168" font-family="'PingFang SC','Microsoft YaHei',-apple-system,sans-serif"
+        font-size="66" font-weight="700" fill="#FFFFFF" letter-spacing="2">麦麦省钱助手</text>
+  <text x="362" y="220" font-family="'Menlo','Consolas',monospace"
+        font-size="26" fill="#FFC72C" letter-spacing="1.5">mcd-coupon-strategist</text>
+
+  <!-- 分隔线 -->
+  <rect x="362" y="248" width="150" height="4" rx="2" fill="url(#gold)"/>
+
+  <!-- 副标题 -->
+  <text x="362" y="300" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="30" fill="#F2E6D8">别的工具帮你省这一单，</text>
+  <text x="362" y="344" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="30" font-weight="700" fill="#FFC72C">我们告诉你这一单你正在白扔多少钱。</text>
+
+  <!-- 右上角标签 -->
+  <g transform="translate(0,0)">
+    <rect x="900" y="40" width="252" height="46" rx="23" fill="#DA291C" opacity="0.92"/>
+    <text x="1026" y="70" text-anchor="middle" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="19" font-weight="600" fill="#FFFFFF">麦当劳 MCP 实时计价</text>
+  </g>
+</svg>

@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any, Optional
 
 from saver import Coupon, Item, Plan, PricedPlan
@@ -139,6 +140,9 @@ def parse_combo_from_detail(detail_response: dict) -> list[Item]:
 # 匹配「满50减12」「满 20 减 3」「满50元减12元」等表述
 _THRESHOLD_RE = re.compile(r"满\s*(\d+(?:\.\d+)?)")
 _DISCOUNT_RE = re.compile(r"减\s*(\d+(?:\.\d+)?)")
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+# 匹配「9.9元中杯冰美式」形态：数字 + 元
+_FIXED_PRICE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*元")
 
 
 def parse_coupon(raw: dict) -> Coupon:
@@ -242,6 +246,237 @@ def extract_threshold_gap(price_response: dict) -> Optional[dict]:
     }
 
 
+# --------------------------------------------------------------------------
+# 历史订单与券库存解析（供 auditor.py 使用）
+# --------------------------------------------------------------------------
+
+
+def _parse_datetime(raw: Any):
+    """解析 MCP 的时间字符串为 date。
+
+    支持 "2026-10-02 15:57:36" / "2026-10-02" / ISO 格式。
+    解析失败返回 None，由调用方决定如何处理。
+    """
+    if not raw:
+        return None
+    s = str(raw).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(s[: len(fmt) + 2].strip(), fmt).date()
+        except ValueError:
+            continue
+    # 退一步：只取前 10 位的日期部分
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def parse_orders(order_response: dict) -> list:
+    """解析 order-list 的响应为 auditor.OrderRecord 列表。
+
+    ⚠️ 注意：`realTotalAmount` 是**字符串型的「元」**（如 "15.5"），
+    与 calculate-price 返回的「分」完全不同 —— 此处直接按元解析，
+    不可再除以 100。这是本适配层中最容易混淆的单位差异。
+
+    同时会过滤掉「整单退款」的订单 —— 退款单不代表真实消费，
+    计入总额会虚高。
+    """
+    from auditor import OrderRecord  # 延迟导入，避免循环依赖
+
+    data = order_response.get("data") or {}
+    raw_list = data.get("list") or []
+
+    records: list = []
+    for o in raw_list:
+        status = str(o.get("orderStatus", ""))
+        # 整单退款不计入消费
+        if "整单退款" in status:
+            continue
+
+        order_date = _parse_datetime(o.get("createTime"))
+        if order_date is None:
+            continue
+
+        try:
+            amount = float(o.get("realTotalAmount") or 0)
+        except (TypeError, ValueError):
+            amount = 0.0
+
+        items: list[str] = []
+        for p in o.get("orderProductList", []):
+            name = str(p.get("productName", ""))
+            qty = int(p.get("quantity") or 1)
+            items.extend([name] * qty)
+
+        # 渠道：beType 1=到店，2=外送，5=得来速
+        be = str(o.get("beType", ""))
+        channel = {"1": "到店", "2": "外送", "5": "得来速"}.get(be, "其他")
+
+        records.append(
+            OrderRecord(
+                order_time=order_date,
+                amount=amount,
+                items=items,
+                channel=channel,
+            )
+        )
+
+    return records
+
+
+def coupon_real_value(coupon_title: str, menu_prices: dict, fallback: float = 0.0) -> float:
+    """从券面文本推算券的**真实价值**（用这张券能省下多少元）。
+
+    麦当劳券主要有三种形态，价值算法各不相同：
+
+    1. **满减券**「满50减12」
+       → value = 12（直接减免额）
+
+    2. **买一送一**「中薯条买一送一」
+       → value = 该商品单价（等于白得一份）
+       商品名从标题中剥离，去菜单里查价。
+
+    3. **固定价券**「9.9元中杯冰美式」
+       → value = 商品原价 - 9.9
+       原价同样从菜单里查。
+
+    参数
+    ----
+    coupon_title : 券面标题
+    menu_prices  : {商品名关键词: 单价(元)} —— 由菜单数据构建
+    fallback     : 无法推算时返回的值。**默认 0，即不估算、不编造。**
+
+    设计原则：宁可少报价值，也不编造一个看似合理的数字。
+    一旦券面无法与菜单对应上，就返回 0 并在报告中如实标注「价值未知」。
+    """
+
+    title = coupon_title.strip()
+
+    # --- 形态 1：满减券 ---
+    if _THRESHOLD_RE.search(title):
+        m = _DISCOUNT_RE.search(title)
+        if m:
+            return float(m.group(1))
+
+    # --- 形态 2：买一送一 ---
+    if "买一送一" in title or "买1送1" in title:
+        target = title.replace("买一送一", "").replace("买1送1", "").strip()
+        price = _lookup_price(target, menu_prices)
+        if price is not None:
+            return round(price, 2)
+        return fallback
+
+    # --- 形态 3：固定价券「9.9元xxx」---
+    m_fixed = _FIXED_PRICE_RE.search(title)
+    if m_fixed:
+        fixed = float(m_fixed.group(1))
+        target = _FIXED_PRICE_RE.sub("", title).strip()
+        price = _lookup_price(target, menu_prices)
+        if price is not None:
+            value = round(price - fixed, 2)
+            return max(value, 0.0)  # 不该为负
+        return fallback
+
+    return fallback
+
+
+def _lookup_price(name: str, menu_prices: dict) -> Optional[float]:
+    """在菜单价格表中模糊查找商品单价。
+
+    匹配策略：先精确匹配，再找「菜单项名被券面文本包含」或反向包含的项。
+    例如券面「中薯条买一送一」→ target「中薯条」→ 命中菜单「薯条/中薯条」。
+    """
+    if not name or not menu_prices:
+        return None
+
+    # 精确匹配
+    if name in menu_prices:
+        return menu_prices[name]
+
+    # 双向包含匹配，取名称最长的（最具体）那个
+    candidates = [
+        (k, v) for k, v in menu_prices.items()
+        if k and (k in name or name in k)
+    ]
+    if candidates:
+        candidates.sort(key=lambda kv: -len(kv[0]))
+        return candidates[0][1]
+
+    return None
+
+
+def parse_coupon_stock(coupon_response: dict, menu_prices: Optional[dict] = None) -> list:
+    """解析 query-my-coupons 的响应为 auditor.CouponStock 列表。
+
+    券的真实价值由 `coupon_real_value()` 计算：
+    - 满减券直接取减免额
+    - 买一送一 / 固定价券需要 `menu_prices`（由菜单构建）才能算出价值
+
+    若未提供 menu_prices，则只有满减券能算出价值，其余券 value=0。
+    **绝不估算** —— 无法推算的券价值为 0，报告中会标注为「价值未知」。
+    """
+    from auditor import CouponStock  # 延迟导入
+
+    menu_prices = menu_prices or {}
+    data = coupon_response.get("data") or []
+    if isinstance(data, dict):
+        data = data.get("coupons") or data.get("list") or []
+
+    stock: list = []
+    for raw in data:
+        title = str(raw.get("title") or raw.get("name") or "")
+
+        value = coupon_real_value(title, menu_prices)
+
+        # 门槛只对满减券有意义
+        threshold = 0.0
+        m_th = _THRESHOLD_RE.search(title)
+        if m_th:
+            threshold = float(m_th.group(1))
+
+        # 有效期：tradeDateTime 形如 "2026-10-12 10:30-2026-10-16 23:59"
+        expire = None
+        trade = str(raw.get("tradeDateTime") or "")
+        dates = _DATE_RE.findall(trade)
+        if dates:
+            expire = _parse_datetime(dates[-1])
+
+        stock.append(
+            CouponStock(
+                coupon_id=str(raw.get("couponId") or raw.get("id") or ""),
+                name=title,
+                value=value,
+                expire_date=expire,
+                threshold=threshold,
+            )
+        )
+
+    return stock
+
+
+def build_menu_price_table(menu_response: dict) -> dict:
+    """从 query-meals 响应构建「商品名 → 单价(元)」表，供券价值推算使用。
+
+    注意：菜单的 currentPrice 是**元**的字符串，直接解析即可。
+    """
+    data = menu_response.get("data") or {}
+    meals_map: dict = data.get("meals") or {}
+
+    table: dict[str, float] = {}
+    for code, meal in meals_map.items():
+        name = str(meal.get("name") or "").strip()
+        if not name:
+            continue
+        try:
+            price = float(meal.get("currentPrice") or 0)
+        except (TypeError, ValueError):
+            continue
+        if price > 0:
+            table[name] = price
+    return table
+
+
 __all__ = [
     "CENTS_PER_YUAN",
     "cents_to_yuan",
@@ -252,4 +487,8 @@ __all__ = [
     "parse_coupons",
     "parse_price_response",
     "extract_threshold_gap",
+    "parse_orders",
+    "parse_coupon_stock",
+    "build_menu_price_table",
+    "coupon_real_value",
 ]

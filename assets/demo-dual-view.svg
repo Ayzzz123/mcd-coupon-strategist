@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" width="1200" height="760" role="img" aria-label="同一个账号，两种问法：单次省钱 vs 消费审计">
+  <defs>
+    <linearGradient id="win" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1b1e25"/>
+      <stop offset="100%" stop-color="#14161c"/>
+    </linearGradient>
+    <linearGradient id="hdr" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#252a34"/>
+      <stop offset="100%" stop-color="#1d2129"/>
+    </linearGradient>
+    <linearGradient id="accentA" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="accentB" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFC72C"/><stop offset="100%" stop-color="#FF8A00"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="760" fill="#0d0f13"/>
+
+  <!-- 标题行 -->
+  <text x="60" y="58" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="30" font-weight="700" fill="#FFFFFF">同一个账号 · 同一个门店 · 两种问法</text>
+  <text x="60" y="94" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="19" fill="#8B94A3">左：省这一单　｜　右：告诉你正在白扔多少钱</text>
+
+  <!-- ============ 左侧：单次省钱 ============ -->
+  <g transform="translate(48,124)">
+    <rect x="0" y="0" width="536" height="576" rx="16" fill="url(#win)" stroke="#2a3040" stroke-width="1.5"/>
+    <!-- 窗口栏 -->
+    <rect x="0" y="0" width="536" height="46" rx="16" fill="url(#hdr)"/>
+    <rect x="0" y="26" width="536" height="20" fill="url(#hdr)"/>
+    <circle cx="26" cy="23" r="7" fill="#FF5F57"/>
+    <circle cx="50" cy="23" r="7" fill="#FEBC2E"/>
+    <circle cx="74" cy="23" r="7" fill="#28C840"/>
+    <text x="268" y="29" text-anchor="middle" font-family="'Menlo','Consolas',monospace"
+          font-size="15" fill="#8B94A3">链路 A · 单次省钱</text>
+
+    <!-- 用户提问 -->
+    <rect x="26" y="72" width="392" height="40" rx="9" fill="#1e2530"/>
+    <text x="42" y="98" font-family="'PingFang SC','Microsoft YaHei',sans-serif" font-size="17" fill="#7EA6E8">
+      你：预算 35 元，怎么办最省？</text>
+
+    <!-- 推荐卡片 -->
+    <rect x="26" y="132" width="484" height="96" rx="11" fill="#152238" stroke="#2C4C7C" stroke-width="1.5"/>
+    <rect x="26" y="132" width="5" height="96" rx="2.5" fill="url(#accentA)"/>
+    <text x="48" y="162" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="18" font-weight="700" fill="#5B9BF5">推荐方案</text>
+    <text x="48" y="192" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="16" fill="#C8D3E3">麦辣鸡腿堡三件套（汉堡+中薯条+可乐）</text>
+    <text x="48" y="216" font-family="'Menlo','Consolas',monospace"
+          font-size="17" fill="#8B94A3">实付</text>
+    <text x="96" y="218" font-family="'Menlo','Consolas',monospace"
+          font-size="24" font-weight="700" fill="#4ADE80">¥33.5</text>
+
+    <!-- 备选 -->
+    <rect x="26" y="242" width="484" height="66" rx="11" fill="#171b23" stroke="#262d3a" stroke-width="1"/>
+    <text x="48" y="270" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="16" font-weight="600" fill="#8B94A3">备选</text>
+    <text x="48" y="294" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="15" fill="#A9B4C4">单点：麦辣鸡腿堡 + 中薯条</text>
+    <text x="452" y="294" text-anchor="end" font-family="'Menlo','Consolas',monospace"
+          font-size="17" fill="#A9B4C4">¥37.0</text>
+
+    <!-- 归因 -->
+    <rect x="26" y="322" width="484" height="66" rx="11" fill="#171b23" stroke="#262d3a" stroke-width="1"/>
+    <text x="48" y="350" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="16" font-weight="600" fill="#8B94A3">不推荐</text>
+    <text x="48" y="374" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="15" fill="#A9B4C4">单点：堡 + 薯条 + 可乐</text>
+    <text x="452" y="374" text-anchor="end" font-family="'Menlo','Consolas',monospace"
+          font-size="17" fill="#6B7684">¥46.5</text>
+
+    <!-- 结论 -->
+    <rect x="26" y="402" width="484" height="72" rx="11" fill="#12191a" stroke="#24382f" stroke-width="1"/>
+    <text x="48" y="430" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="15" fill="#6EE7B7">三件套 ¥33.5 拿到三样，</text>
+    <text x="48" y="456" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="15" fill="#6EE7B7">比同内容单点组合省 <tspan font-weight="700" fill="#34D399">¥13</tspan>。</text>
+
+    <!-- 底部注脚 -->
+    <text x="26" y="506" font-family="'Menlo','Consolas',monospace"
+          font-size="13" fill="#5B6472">所有金额来自 MCP calculate-price 真实返回</text>
+    <text x="26" y="528" font-family="'Menlo','Consolas',monospace"
+          font-size="13" fill="#5B6472">非估算 · 非模型生成 · 不做价格猜测</text>
+
+    <!-- 标签 -->
+    <rect x="26" y="546" width="128" height="26" rx="13" fill="#1c2a45"/>
+    <text x="90" y="564" text-anchor="middle" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="13" fill="#7EA6E8">一次性 · 局部最优</text>
+  </g>
+
+  <!-- ============ 右侧：消费审计 ============ -->
+  <g transform="translate(616,124)">
+    <rect x="0" y="0" width="536" height="576" rx="16" fill="url(#win)" stroke="#3d3520" stroke-width="1.5"/>
+    <rect x="0" y="0" width="536" height="46" rx="16" fill="url(#hdr)"/>
+    <rect x="0" y="26" width="536" height="20" fill="url(#hdr)"/>
+    <circle cx="26" cy="23" r="7" fill="#FF5F57"/>
+    <circle cx="50" cy="23" r="7" fill="#FEBC2E"/>
+    <circle cx="74" cy="23" r="7" fill="#28C840"/>
+    <text x="268" y="29" text-anchor="middle" font-family="'Menlo','Consolas',monospace"
+          font-size="15" fill="#8B94A3">链路 B · 消费审计</text>
+
+    <rect x="26" y="72" width="440" height="40" rx="9" fill="#2a2416"/>
+    <text x="42" y="98" font-family="'PingFang SC','Microsoft YaHei',sans-serif" font-size="17" fill="#E8C766">
+      你：我最近在麦当劳花了多少？</text>
+
+    <!-- 沉默成本 -->
+    <rect x="26" y="132" width="484" height="150" rx="11" fill="#2b1e08" stroke="#6B4E12" stroke-width="1.5"/>
+    <rect x="26" y="132" width="5" height="150" rx="2.5" fill="url(#accentB)"/>
+    <text x="48" y="162" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="18" font-weight="700" fill="#FFC72C">【一】券的沉默成本</text>
+    <text x="48" y="192" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="15" fill="#F0D9A0">你有 3 张券将在 1 天内陆续过期</text>
+    <text x="48" y="216" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="15" fill="#F0D9A0">面值合计</text>
+    <text x="132" y="220" font-family="'Menlo','Consolas',monospace"
+          font-size="26" font-weight="700" fill="#FFD54A">¥33.1</text>
+    <text x="48" y="248" font-family="'Menlo','Consolas',monospace"
+          font-size="14" fill="#C9A961">· 满50减12　　 省 12.0　还剩 1 天</text>
+    <text x="48" y="270" font-family="'Menlo','Consolas',monospace"
+          font-size="14" fill="#C9A961">· 9.9元冰美式　省 13.1　还剩 5 天</text>
+
+    <!-- 消费习惯 -->
+    <rect x="26" y="296" width="484" height="176" rx="11" fill="#171b23" stroke="#2a3040" stroke-width="1"/>
+    <text x="48" y="326" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="18" font-weight="700" fill="#C8D3E3">【二】消费习惯</text>
+    <text x="48" y="358" font-family="'Menlo','Consolas',monospace" font-size="15" fill="#8B94A3">订单数</text>
+    <text x="130" y="358" font-family="'Menlo','Consolas',monospace" font-size="15" fill="#FFFFFF">4 单</text>
+    <text x="240" y="358" font-family="'Menlo','Consolas',monospace" font-size="15" fill="#8B94A3">总支出</text>
+    <text x="322" y="358" font-family="'Menlo','Consolas',monospace" font-size="15" fill="#FFFFFF">¥144.5</text>
+    <text x="48" y="386" font-family="'Menlo','Consolas',monospace" font-size="15" fill="#8B94A3">客单价</text>
+    <text x="130" y="386" font-family="'Menlo','Consolas',monospace" font-size="15" fill="#FFD54A">¥36.12</text>
+    <rect x="240" y="372" width="106" height="22" rx="11" fill="#3a1f10"/>
+    <text x="293" y="388" text-anchor="middle" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="12" fill="#F59E6B">偏高</text>
+    <text x="48" y="420" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="14" fill="#7EA6E8">· 点过 4 次「麦辣鸡腿汉堡」，</text>
+    <text x="48" y="442" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="14" fill="#7EA6E8">  改成套餐每次可省 5~13 元。</text>
+    <text x="48" y="464" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="14" fill="#7EA6E8">· 外送 1 单，配送费未计入。</text>
+
+    <!-- 结论条 -->
+    <rect x="26" y="488" width="484" height="52" rx="11" fill="#2c1210" stroke="#7A221A" stroke-width="1.5"/>
+    <text x="48" y="520" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="16" font-weight="700" fill="#FF8A7A">最该做：先用掉这 ¥33.1，不用就是纯损失</text>
+
+    <rect x="26" y="550" width="150" height="22" rx="11" fill="#3d3520"/>
+    <text x="101" y="566" text-anchor="middle" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="12" fill="#FFC72C">长期 · 结构性浪费</text>
+  </g>
+
+  <!-- 底部对比条 -->
+  <g transform="translate(48,726)">
+    <text x="0" y="0" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="17" fill="#6B7684">左边回答「怎么点」，右边回答</text>
+    <text x="290" y="0" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="17" font-weight="700" fill="#FFC72C">「你正在损失什么」</text>
+    <text x="478" y="0" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="17" fill="#6B7684">—— 后者才是没人做过的那一半。</text>
+  </g>
+</svg>

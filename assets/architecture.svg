@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" role="img" aria-label="麦麦省钱助手双链路架构图">
+  <defs>
+    <linearGradient id="bgA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#111827"/><stop offset="100%" stop-color="#0b1017"/>
+    </linearGradient>
+    <linearGradient id="blueBtn" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#1E3A8A"/>
+    </linearGradient>
+    <linearGradient id="goldBtn" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F59E0B"/><stop offset="100%" stop-color="#B45309"/>
+    </linearGradient>
+    <marker id="arrBlue" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto">
+      <path d="M0 0 L12 6 L0 12 Z" fill="#3B82F6"/>
+    </marker>
+    <marker id="arrGold" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto">
+      <path d="M0 0 L12 6 L0 12 Z" fill="#F59E0B"/>
+    </marker>
+    <marker id="arrGrey" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto">
+      <path d="M0 0 L12 6 L0 12 Z" fill="#4B5563"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="640" fill="url(#bgA)"/>
+
+  <text x="60" y="56" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="28" font-weight="700" fill="#FFFFFF">架构：一次查询，两条链路</text>
+  <text x="60" y="88" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="17" fill="#8B94A3">共用同一套 MCP 数据底座，算法层只做枚举，所有金额由 calculate-price 回填</text>
+
+  <!-- 数据源层 -->
+  <rect x="60" y="120" width="1080" height="104" rx="14" fill="#141b26" stroke="#25324a" stroke-width="1.5"/>
+  <text x="86" y="150" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="15" font-weight="700" fill="#6B7684">麦当劳 MCP · https://mcp.mcd.cn（流式 HTTP · 600 次/分钟）</text>
+
+  <g font-family="'Menlo','Consolas',monospace" font-size="14" fill="#9DB2D0">
+    <rect x="86" y="166" width="196" height="38" rx="9" fill="#1c2740"/>
+    <text x="184" y="190" text-anchor="middle">query-nearby-stores</text>
+    <rect x="298" y="166" width="150" height="38" rx="9" fill="#1c2740"/>
+    <text x="373" y="190" text-anchor="middle">query-meals</text>
+    <rect x="464" y="166" width="150" height="38" rx="9" fill="#1c2740"/>
+    <text x="539" y="190" text-anchor="middle">query-store-coupons</text>
+    <rect x="630" y="166" width="170" height="38" rx="9" fill="#1c2740"/>
+    <text x="715" y="190" text-anchor="middle">calculate-price</text>
+    <rect x="816" y="166" width="150" height="38" rx="9" fill="#2a2416"/>
+    <text x="891" y="190" text-anchor="middle" fill="#E8C766">order-list</text>
+    <rect x="982" y="166" width="132" height="38" rx="9" fill="#2a2416"/>
+    <text x="1048" y="190" text-anchor="middle" fill="#E8C766">query-my-coupons</text>
+  </g>
+
+  <!-- 适配层 -->
+  <rect x="60" y="248" width="1080" height="70" rx="14" fill="#12211f" stroke="#25443d" stroke-width="1.5"/>
+  <text x="86" y="278" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="15" font-weight="700" fill="#6EE7B7">适配层 src/mcd_adapter.py</text>
+  <text x="86" y="302" font-family="'PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#7FA99D">
+    cents_to_yuan 统一分→元　·　字段映射　·　整单退款过滤　·　券面价值从菜单反查（买一送一 / 固定价券）
+  </text>
+
+  <!-- 分叉箭头 -->
+  <path d="M380 318 L380 356 L330 356 L330 382" stroke="#3B82F6" stroke-width="2.5" fill="none" marker-end="url(#arrBlue)"/>
+  <path d="M820 318 L820 356 L870 356 L870 382" stroke="#F59E0B" stroke-width="2.5" fill="none" marker-end="url(#arrGold)"/>
+  <path d="M600 318 L600 340" stroke="#4B5563" stroke-width="2" fill="none" stroke-dasharray="5 5"/>
+
+  <!-- 链路 A -->
+  <rect x="90" y="386" width="480" height="206" rx="14" fill="#0f1a2e" stroke="#2C4C7C" stroke-width="1.8"/>
+  <text x="118" y="418" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="19" font-weight="700" fill="#5B9BF5">链路 A · 单次省钱</text>
+  <text x="118" y="446" font-family="'PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#7EA6E8">
+    src/saver.py</text>
+
+  <g font-family="'PingFang SC','Microsoft YaHei',sans-serif" font-size="14.5" fill="#C8D3E3">
+    <text x="118" y="478">① 枚举候选：单品 / 套餐 / 券组合 / 加购凑单</text>
+    <text x="118" y="504">② 逐方案真实计价（calculate-price 回填）</text>
+    <text x="118" y="530">③ 检测凑单陷阱：为用券加购反而更贵时报警</text>
+    <text x="118" y="556">④ 输出省钱归因：省在哪、为什么推荐它</text>
+  </g>
+  <rect x="118" y="566" width="180" height="20" rx="10" fill="#1c2a45"/>
+  <text x="208" y="581" text-anchor="middle" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="12" fill="#7EA6E8">一次性 · 局部最优</text>
+
+  <!-- 链路 B -->
+  <rect x="630" y="386" width="480" height="206" rx="14" fill="#231a08" stroke="#6B4E12" stroke-width="1.8"/>
+  <text x="658" y="418" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="19" font-weight="700" fill="#FFC72C">链路 B · 消费审计</text>
+  <text x="658" y="446" font-family="'PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#E8C766">
+    src/auditor.py　（本项目独有）</text>
+
+  <g font-family="'PingFang SC','Microsoft YaHei',sans-serif" font-size="14.5" fill="#F0D9A0">
+    <text x="658" y="478">① 券的沉默成本：量化即将过期的券面值</text>
+    <text x="658" y="504">② 消费画像：月度支出 / 客单价 / 渠道分布</text>
+    <text x="658" y="530">③ 结构性问题：高频单点 → 建议换成套餐</text>
+    <text x="658" y="556">④ 结论落地：本月最该做的一件事</text>
+  </g>
+  <rect x="658" y="566" width="196" height="20" rx="10" fill="#3d3520"/>
+  <text x="756" y="581" text-anchor="middle" font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+        font-size="12" fill="#FFC72C">长期 · 结构性浪费</text>
+</svg>

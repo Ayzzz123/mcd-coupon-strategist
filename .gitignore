@@ -1,0 +1,21 @@
+# 环境变量与凭证 —— 绝不要提交真实 Token
+.env
+.env.local
+*.token
+token.txt
+
+# WorkBuddy 本地工作目录（含个人记忆，不参与开源）
+.workbuddy/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

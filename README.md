@@ -245,12 +245,16 @@ mcd/
 ├── README.md                  # 本文件
 ├── CONTEST_DECLARATION.md     # 参赛声明（官方文本，未做改动）
 ├── MCP_INTEGRATION.md         # MCP 集成说明：Server / Tool / 调用流程 / 业务价值
-├── mcp-config.example.json    # 脱敏 MCP 配置示例（仅环境变量占位符）
 ├── SKILL.md                   # Skill 定义与工作流说明
-├── assets/                    # README 展示图（SVG，可随仓库渲染）
-│   ├── banner.svg
-│   ├── demo-dual-view.svg
-│   └── architecture.svg
+├── mcp-config.example.json    # 脱敏 MCP 配置示例（仅环境变量占位符）
+├── .env.example               # 环境变量占位符
+├── .gitignore
+├── LICENSE                    # MIT
+├── assets/                    # README 展示图
+│   ├── banner.svg             #   头图
+│   ├── demo-dual-view.svg     #   两种问法对比
+│   ├── architecture.svg       #   双链路架构
+│   └── social-preview.png     #   GitHub 社交预览图（1280×640）
 ├── src/
 │   ├── saver.py               # 单次省钱：方案枚举与优化核心逻辑
 │   ├── auditor.py             # 长期画像：券的沉默成本 + 消费习惯审计

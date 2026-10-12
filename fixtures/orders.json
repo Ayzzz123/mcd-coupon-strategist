@@ -1,0 +1,253 @@
+{
+  "_source": "麦当劳官方 MCP · order-list",
+  "_captured_at": "2026-10-12 21:59:29",
+  "_note": "逐字保留的响应，未做任何改动。共 10 条历史订单，其中 1 条为「整单退款」（应被过滤）、2 条为「部分退款」（仍计入消费）。",
+  "success": true,
+  "code": 200,
+  "message": "请求成功",
+  "data": {
+    "list": [
+      {
+        "orderId": "1030930230000754954382452218",
+        "orderType": "1",
+        "createTime": "2026-10-11 09:49:55",
+        "beType": "1",
+        "beCode": "",
+        "storeCode": "1990350",
+        "storeName": "麦当劳南京羊山湖餐厅",
+        "orderStatus": "部分退款",
+        "orderProductList": [
+          {
+            "productCode": "9900003491",
+            "productName": "猪柳蛋麦满分组合",
+            "quantity": 1,
+            "comboItemList": [
+              { "productCode": "1088", "name": "优品豆浆小杯", "quantity": 1 },
+              { "productCode": "5022", "name": "猪柳蛋麦满分", "quantity": 1 }
+            ]
+          },
+          {
+            "productCode": "9900008094",
+            "productName": "吉士蛋麦满分组合",
+            "quantity": 1,
+            "comboItemList": [
+              { "productCode": "5888", "name": "吉士蛋麦满分", "quantity": 1 },
+              { "productCode": "1088", "name": "优品豆浆小杯", "quantity": 1 }
+            ]
+          }
+        ],
+        "realTotalAmount": "36.5"
+      },
+      {
+        "orderId": "1030724290000808129500181813",
+        "orderType": "1",
+        "createTime": "2026-10-02 15:57:36",
+        "beType": "1",
+        "beCode": "",
+        "storeCode": "1990622",
+        "storeName": "麦当劳南京东城汇餐厅",
+        "orderStatus": "订单已完成",
+        "orderProductList": [
+          {
+            "productCode": "9900013476",
+            "productName": "随心配1+1",
+            "quantity": 1,
+            "comboItemList": [
+              { "productCode": "1600", "name": "麦香鱼", "quantity": 1 },
+              { "productCode": "3050", "name": "可乐中杯", "quantity": 1 }
+            ]
+          }
+        ],
+        "realTotalAmount": "1"
+      },
+      {
+        "orderId": "1030376910000661373323932638",
+        "orderType": "1",
+        "createTime": "2026-09-24 18:23:57",
+        "beType": "1",
+        "beCode": "",
+        "storeCode": "1990068",
+        "storeName": "麦当劳南京仙林亚东城得来速餐厅",
+        "orderStatus": "整单退款",
+        "orderProductList": [
+          {
+            "productCode": "521901",
+            "productName": "月下相思扭扭薯",
+            "quantity": 1,
+            "comboItemList": []
+          }
+        ],
+        "realTotalAmount": "15.5"
+      },
+      {
+        "orderId": "1030693900000571970815568312",
+        "orderType": "1",
+        "createTime": "2026-08-16 21:27:35",
+        "beType": "1",
+        "beCode": "",
+        "storeCode": "1990068",
+        "storeName": "麦当劳南京仙林亚东城得来速餐厅",
+        "orderStatus": "订单已完成",
+        "orderProductList": [
+          {
+            "productCode": "1700",
+            "productName": "麦辣鸡翅2块",
+            "quantity": 1,
+            "comboItemList": []
+          },
+          {
+            "productCode": "9900015264",
+            "productName": "蘸酱炸鸡五选一",
+            "quantity": 1,
+            "comboItemList": [
+              { "productCode": "521800", "name": "麦辣大四角", "quantity": 1 },
+              { "productCode": "521799", "name": "日式鲜磨山葵酱", "quantity": 1 }
+            ]
+          },
+          {
+            "productCode": "9900015264",
+            "productName": "蘸酱炸鸡五选一",
+            "quantity": 1,
+            "comboItemList": [
+              { "productCode": "521800", "name": "麦辣大四角", "quantity": 1 },
+              { "productCode": "521797", "name": "北美招牌牧场酱", "quantity": 1 }
+            ]
+          }
+        ],
+        "realTotalAmount": "23.8"
+      },
+      {
+        "orderId": "1030695480000793611709588633",
+        "orderType": "1",
+        "createTime": "2026-07-23 08:14:31",
+        "beType": "1",
+        "beCode": "",
+        "storeCode": "1990350",
+        "storeName": "麦当劳南京羊山湖餐厅",
+        "orderStatus": "部分退款",
+        "orderProductList": [
+          {
+            "productCode": "9900003453",
+            "productName": "吉士蛋麦满分套餐",
+            "quantity": 1,
+            "comboItemList": [
+              { "productCode": "5888", "name": "吉士蛋麦满分", "quantity": 1 },
+              { "productCode": "4825", "name": "脆薯饼", "quantity": 1 },
+              { "productCode": "520688", "name": "大杯鲜萃咖啡", "quantity": 1 }
+            ]
+          }
+        ],
+        "realTotalAmount": "22.4"
+      },
+      {
+        "orderId": "1030297160000752951707154003",
+        "orderType": "1",
+        "createTime": "2026-07-23 07:42:23",
+        "beType": "1",
+        "beCode": "",
+        "storeCode": "1990622",
+        "storeName": "麦当劳南京东城汇餐厅",
+        "orderStatus": "订单已完成",
+        "orderProductList": [
+          {
+            "productCode": "9900014166",
+            "productName": "麦满分三件套四选一",
+            "quantity": 1,
+            "comboItemList": [
+              { "productCode": "1254", "name": "火腿扒麦满分", "quantity": 1 },
+              { "productCode": "2631", "name": "脆香油条", "quantity": 1 },
+              { "productCode": "1088", "name": "优品豆浆小杯", "quantity": 1 }
+            ]
+          }
+        ],
+        "realTotalAmount": "0"
+      },
+      {
+        "orderId": "1030700790000659737557952239",
+        "orderType": "1",
+        "createTime": "2026-07-22 08:00:34",
+        "beType": "1",
+        "beCode": "",
+        "storeCode": "1990350",
+        "storeName": "麦当劳南京羊山湖餐厅",
+        "orderStatus": "订单已完成",
+        "orderProductList": [
+          {
+            "productCode": "9900014166",
+            "productName": "麦满分三件套四选一",
+            "quantity": 1,
+            "comboItemList": [
+              { "productCode": "6800", "name": "原味板烧鸡腿麦满分", "quantity": 1 },
+              { "productCode": "2631", "name": "脆香油条", "quantity": 1 },
+              { "productCode": "1088", "name": "优品豆浆小杯", "quantity": 1 }
+            ]
+          }
+        ],
+        "realTotalAmount": "0"
+      },
+      {
+        "orderId": "1030820290000752893699930399",
+        "orderType": "1",
+        "createTime": "2026-07-20 20:41:53",
+        "beType": "1",
+        "beCode": "",
+        "storeCode": "1990299",
+        "storeName": "麦当劳南京南邮广场餐厅",
+        "orderStatus": "订单已完成",
+        "orderProductList": [
+          {
+            "productCode": "521717",
+            "productName": "椰奶雪冰",
+            "quantity": 1,
+            "comboItemList": []
+          }
+        ],
+        "realTotalAmount": "9.9"
+      },
+      {
+        "orderId": "1030506630000793552423108115",
+        "orderType": "1",
+        "createTime": "2026-07-20 20:27:53",
+        "beType": "1",
+        "beCode": "",
+        "storeCode": "1990299",
+        "storeName": "麦当劳南京南邮广场餐厅",
+        "orderStatus": "订单已完成",
+        "orderProductList": [
+          {
+            "productCode": "9900014874",
+            "productName": "买薯送薯",
+            "quantity": 1,
+            "comboItemList": [
+              { "productCode": "4810", "name": "中薯条", "quantity": 1 },
+              { "productCode": "4810", "name": "中薯条", "quantity": 1 }
+            ]
+          }
+        ],
+        "realTotalAmount": "9.9"
+      },
+      {
+        "orderId": "1030554190000570889410767647",
+        "orderType": "1",
+        "createTime": "2026-06-30 15:07:23",
+        "beType": "1",
+        "beCode": "",
+        "storeCode": "1990622",
+        "storeName": "麦当劳南京东城汇餐厅",
+        "orderStatus": "订单已完成",
+        "orderProductList": [
+          {
+            "productCode": "9900012337",
+            "productName": "【高达吉士双牛堡】随心配1+1",
+            "quantity": 1,
+            "comboItemList": [
+              { "productCode": "521316", "name": "高达吉士双牛堡", "quantity": 1 },
+              { "productCode": "521328", "name": "可乐麦炫酷", "quantity": 1 }
+            ]
+          }
+        ],
+        "realTotalAmount": "13.9"
+      }
+    ]
+  }
+}

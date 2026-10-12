@@ -1,0 +1,37 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.10", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 本项目零第三方依赖，无需 pip install —— 四套测试与 demo 均只依赖标准库
+      - name: 单元测试
+        run: |
+          python src/test_saver.py
+          python src/test_auditor.py
+          python src/test_adapter.py
+          python src/test_order_adapter.py
+
+      - name: 端到端 demo（录制的真实 MCP 响应）
+        run: python demo.py

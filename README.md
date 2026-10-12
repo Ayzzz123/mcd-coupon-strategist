@@ -4,16 +4,17 @@
 
 <br>
 
+[![tests](https://github.com/Ayzzz123/mcd-coupon-strategist/actions/workflows/tests.yml/badge.svg)](https://github.com/Ayzzz123/mcd-coupon-strategist/actions/workflows/tests.yml)
+[![deps](https://img.shields.io/badge/dependencies-0-3FB950?style=flat-square)](#快速体验30-秒)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white)](#快速体验30-秒)
+[![Token](https://img.shields.io/badge/Token-不需要-blue?style=flat-square)](#快速体验30-秒)
 [![License](https://img.shields.io/badge/License-MIT-FFC72C?style=flat-square)](./LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-mcp.mcd.cn-DA291C?style=flat-square)](https://mcp.mcd.cn)
-[![Tests](https://img.shields.io/badge/tests-4%20suites%20passing-3FB950?style=flat-square)](#测试)
-[![Token](https://img.shields.io/badge/Token-不需要-blue?style=flat-square)](#测试)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white)](#快速开始)
 
 **市面上的省钱工具都在回答「这一单怎么点最省」。**
 **我们多回答一个问题：「你正在白扔多少钱？」**
 
-[核心亮点](#我们做对了什么别人没做的) · [真实例子](#一个真实例子) · [快速开始](#快速开始) · [架构](#架构) · [设计原则](#设计原则)
+[快速体验](#快速体验30-秒) · [真实例子](#一个真实例子) · [核心亮点](#我们做对了什么别人没做的) · [架构](#架构) · [设计原则](#设计原则)
 
 </div>
 
@@ -42,6 +43,43 @@
 | **3 ~ 13 元** | **一次几十元** | MCP 真实计价 | 无需 Token 即可跑测试 |
 
 </div>
+
+---
+
+## 快速体验（30 秒）
+
+```bash
+git clone https://github.com/Ayzzz123/mcd-coupon-strategist.git
+cd mcd-coupon-strategist
+python demo.py
+```
+
+**零第三方依赖**（只用标准库）、**不需要 MCP Token**、**不联网**。
+`demo.py` 读取 `fixtures/` 里录制的真实 MCP 响应，跑通两条链路：
+
+```
+链路 A · 单次省钱
+门店：麦当劳南京东城汇餐厅(1990622)（到店自取）
+需求：想吃「汉堡 + 薯条 + 可乐」，预算 40 元
+
+推荐方案
+  组合：套餐：麦辣鸡腿汉堡三件套
+  实付 33.5 元
+备选方案
+  · 单点：麦辣鸡腿汉堡 + 中薯条 + 可乐 —— 实付 46.5 元
+
+  → 同样吃到「汉堡 + 薯条 + 可乐」：33.5 元 vs 46.5 元，差 13.0 元。
+
+链路 B · 消费审计
+【一】券的沉默成本
+  你有 2 张将在 4 天内陆续过期（面值 14.5 元）。
+    · 中薯条买一送一  省 14.5 元  还剩 4 天
+    · 王牌小食拼  价值未知（菜单中无对应商品，未估算）  还剩 4 天
+```
+
+真实运行时，这些响应由 MCP **实时**返回，业务逻辑一字未改 ——
+所以这个 demo 同时也是整套数据流水线的**端到端回归测试**。
+数据来源与采集时间见 [`fixtures/README.md`](./fixtures/README.md)。
 
 ---
 
@@ -250,11 +288,18 @@ mcd/
 ├── .env.example               # 环境变量占位符
 ├── .gitignore
 ├── LICENSE                    # MIT
+├── demo.py                    # 零配置演示：跑通两条链路（不需要 Token）
 ├── assets/                    # README 展示图
 │   ├── banner.svg             #   头图
 │   ├── demo-dual-view.svg     #   两种问法对比
 │   ├── architecture.svg       #   双链路架构
 │   └── social-preview.png     #   GitHub 社交预览图（1280×640）
+├── fixtures/                  # 录制的真实 MCP 响应（供 demo 复现）
+│   ├── README.md              #   数据来源、采集时间与补充方法
+│   ├── menu.json              #   query-meals
+│   ├── coupons.json           #   query-store-coupons
+│   ├── orders.json            #   order-list
+│   └── prices.json            #   calculate-price（按组合签名索引）
 ├── src/
 │   ├── saver.py               # 单次省钱：方案枚举与优化核心逻辑
 │   ├── auditor.py             # 长期画像：券的沉默成本 + 消费习惯审计
@@ -263,6 +308,8 @@ mcd/
 │   ├── test_adapter.py        # 适配层自测
 │   ├── test_auditor.py        # 审计模块自测（含日期临界值）
 │   └── test_order_adapter.py  # 订单/券解析自测（用真实响应片段）
+├── .github/workflows/
+│   └── tests.yml              # CI：Python 3.8/3.10/3.12/3.13 上跑测试 + demo
 ├── workbuddy.md               # WorkBuddy 开发对话上下文（WorkBuddy 专项奖励用）
 └── docs/
     ├── TOKEN_GUIDE.md         # MCP Token 申请指引
@@ -272,13 +319,15 @@ mcd/
 ### 测试
 
 ```bash
+python demo.py                    # 端到端：两条链路的完整输出
 python src/test_saver.py          # 单次省钱：枚举、排序、凑单陷阱
 python src/test_auditor.py        # 长期画像：沉默成本、消费习惯
 python src/test_adapter.py        # 适配层：单位换算、响应解析
 python src/test_order_adapter.py  # 订单/券：退款过滤、券价值推算
 ```
 
-四套测试均为纯本地运行，**不需要 MCP Token**。
+全部为纯本地运行，**不需要 MCP Token，也不需要安装任何第三方库**。
+CI 会在 Python 3.8 / 3.10 / 3.12 / 3.13 上自动跑这一整套（见 [`tests.yml`](./.github/workflows/tests.yml)）。
 
 ---
 

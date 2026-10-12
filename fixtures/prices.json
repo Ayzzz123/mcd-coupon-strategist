@@ -1,0 +1,103 @@
+{
+  "_source": "麦当劳官方 MCP · calculate-price",
+  "_captured_at": "2026-10-12 21:59:47 ~ 22:00:19",
+  "_store": "1990622 麦当劳南京东城汇餐厅 · 到店自取 orderType=1 beType=1",
+  "_note": "逐字保留的计价响应。key 是商品组合的规范签名（按商品编码升序，形如 code:qty+code:qty），value 是 calculate-price 的原始响应。",
+  "_unit_warning": "响应中所有金额字段单位均为「分」。3350 表示 33.5 元。",
+  "prices": {
+    "9900005456:1": {
+      "success": true,
+      "code": 200,
+      "data": {
+        "productOriginalPrice": 3350,
+        "productPrice": 3350,
+        "originalPrice": 3350,
+        "discount": 0,
+        "price": 3350,
+        "productList": [
+          { "productCode": "9900005456", "productName": "麦辣鸡腿汉堡三件套", "quantity": 1, "originalSubtotal": 3350, "subtotal": 3350 }
+        ],
+        "takeWayList": [
+          { "code": "eat-in", "title": "堂食", "subtitle": "店内用餐" },
+          { "code": "locker-in", "title": "外带", "subtitle": "店内取餐柜" }
+        ]
+      }
+    },
+    "1440:1": {
+      "success": true,
+      "code": 200,
+      "data": {
+        "productOriginalPrice": 2250,
+        "productPrice": 2250,
+        "originalPrice": 2250,
+        "discount": 0,
+        "price": 2250,
+        "productList": [
+          { "productCode": "1440", "productName": "麦辣鸡腿汉堡", "quantity": 1, "originalSubtotal": 2250, "subtotal": 2250 }
+        ],
+        "takeWayList": [
+          { "code": "eat-in", "title": "堂食", "subtitle": "店内用餐" },
+          { "code": "locker-in", "title": "外带", "subtitle": "店内取餐柜" }
+        ]
+      }
+    },
+    "1440:1+4810:1": {
+      "success": true,
+      "code": 200,
+      "data": {
+        "productOriginalPrice": 3700,
+        "productPrice": 3700,
+        "originalPrice": 3700,
+        "discount": 0,
+        "price": 3700,
+        "productList": [
+          { "productCode": "1440", "productName": "麦辣鸡腿汉堡", "quantity": 1, "originalSubtotal": 2250, "subtotal": 2250 },
+          { "productCode": "4810", "productName": "中薯条", "quantity": 1, "originalSubtotal": 1450, "subtotal": 1450 }
+        ],
+        "takeWayList": [
+          { "code": "eat-in", "title": "堂食", "subtitle": "店内用餐" },
+          { "code": "locker-in", "title": "外带", "subtitle": "店内取餐柜" }
+        ]
+      }
+    },
+    "1440:1+9900008751:1": {
+      "success": true,
+      "code": 200,
+      "data": {
+        "productOriginalPrice": 3200,
+        "productPrice": 3200,
+        "originalPrice": 3200,
+        "discount": 0,
+        "price": 3200,
+        "productList": [
+          { "productCode": "1440", "productName": "麦辣鸡腿汉堡", "quantity": 1, "originalSubtotal": 2250, "subtotal": 2250 },
+          { "productCode": "9900008751", "productName": "可乐", "quantity": 1, "originalSubtotal": 950, "subtotal": 950 }
+        ],
+        "takeWayList": [
+          { "code": "eat-in", "title": "堂食", "subtitle": "店内用餐" },
+          { "code": "locker-in", "title": "外带", "subtitle": "店内取餐柜" }
+        ]
+      }
+    },
+    "1440:1+4810:1+9900008751:1": {
+      "success": true,
+      "code": 200,
+      "data": {
+        "productOriginalPrice": 4650,
+        "productPrice": 4650,
+        "originalPrice": 4650,
+        "discount": 0,
+        "price": 4650,
+        "productList": [
+          { "productCode": "1440", "productName": "麦辣鸡腿汉堡", "quantity": 1, "originalSubtotal": 2250, "subtotal": 2250 },
+          { "productCode": "4810", "productName": "中薯条", "quantity": 1, "originalSubtotal": 1450, "subtotal": 1450 },
+          { "productCode": "9900008751", "productName": "可乐", "quantity": 1, "originalSubtotal": 950, "subtotal": 950 }
+        ],
+        "takeWayList": [
+          { "code": "eat-in", "title": "堂食", "subtitle": "店内用餐" },
+          { "code": "locker-in", "title": "外带", "subtitle": "店内取餐柜" }
+        ]
+      }
+    }
+  }
+}

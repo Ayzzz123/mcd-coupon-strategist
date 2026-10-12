@@ -316,7 +316,13 @@ def render_audit(report: dict) -> str:
             else:
                 when = f"还剩 {d} 天"
             th = f"（满 {it['threshold']} 元可用）" if it.get("threshold") else ""
-            lines.append(f"    · {it['name']}  省 {it['value']} 元  {when}{th}")
+            # 价值为 0 说明券面无法与菜单商品对应。按「宁可少报，不可编造」原则
+            # 如实标注「价值未知」，而不是显示一个看起来坏掉的「省 0.0 元」。
+            if it.get("value", 0) > 0:
+                value_txt = f"省 {it['value']} 元"
+            else:
+                value_txt = "价值未知（菜单中无对应商品，未估算）"
+            lines.append(f"    · {it['name']}  {value_txt}  {when}{th}")
     lines.append("")
 
     # 第二部分：消费画像

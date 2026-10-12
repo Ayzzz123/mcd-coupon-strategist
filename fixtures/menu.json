@@ -1,0 +1,57 @@
+{
+  "_source": "麦当劳官方 MCP · query-meals",
+  "_captured_at": "2026-10-12 21:59:29",
+  "_store": "1990622 麦当劳南京东城汇餐厅 · 到店自取 orderType=1 beType=1",
+  "_note": "真实响应的**节选**：完整菜单有 100+ 项，此处只保留 demo 用到的 4 项，字段与取值均未改动。",
+  "success": true,
+  "code": 200,
+  "data": {
+    "categories": [
+      {
+        "name": "鸡肉汉堡\n/卷",
+        "meals": [
+          { "code": "9900005456", "tags": ["套餐", "立省10.5元起"] },
+          { "code": "1440", "tags": ["单品", "人气经典", "外酥里嫩"] }
+        ]
+      },
+      {
+        "name": "小食甜品\n/其他",
+        "meals": [
+          { "code": "4810", "tags": ["小食"] }
+        ]
+      },
+      {
+        "name": "饮品",
+        "meals": [
+          { "code": "9900008751", "tags": ["冷饮"] }
+        ]
+      }
+    ],
+    "meals": {
+      "9900005456": {
+        "name": "麦辣鸡腿汉堡三件套",
+        "currentPrice": "33.5",
+        "originalPrice": "47",
+        "canWithOrder": false
+      },
+      "1440": {
+        "name": "麦辣鸡腿汉堡",
+        "currentPrice": "22.5",
+        "originalPrice": "22.5",
+        "canWithOrder": false
+      },
+      "4810": {
+        "name": "薯条",
+        "currentPrice": "14.5",
+        "originalPrice": "14.5",
+        "canWithOrder": false
+      },
+      "9900008751": {
+        "name": "可乐",
+        "currentPrice": "9.5",
+        "originalPrice": "9.5",
+        "canWithOrder": false
+      }
+    }
+  }
+}

@@ -366,7 +366,11 @@ def render(result: dict) -> str:
         best = rec[0]
         lines.append("推荐方案")
         lines.append(f"  组合：{best.label}")
-        lines.append(f"  实付 {best.payable} 元，优惠 {best.discount} 元")
+        # 优惠为 0 时不显示，避免「优惠 0.0 元」这种噪音
+        if best.discount > 0:
+            lines.append(f"  实付 {best.payable} 元，优惠 {best.discount} 元")
+        else:
+            lines.append(f"  实付 {best.payable} 元")
         if best.delivery_fee:
             lines.append(f"  （含配送费 {best.delivery_fee} 元）")
         lines.append("")

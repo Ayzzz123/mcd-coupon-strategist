@@ -17,6 +17,7 @@ from auditor import audit_report, render_audit  # noqa: E402
 from mcd_adapter import (  # noqa: E402
     build_menu_price_table,
     coupon_real_value,
+    parse_coupon_probes,
     parse_coupon_stock,
     parse_orders,
 )
@@ -206,7 +207,42 @@ def main() -> None:
     print()
 
     print("=" * 60)
-    print("5. 端到端：真实数据生成消费审计报告")
+    print("5. 券价值实测（带券计价优先于菜单反查）")
+    print("=" * 60)
+
+    # 真实响应：把券自带的 productCode 与 couponId 一起传给 calculate-price
+    real_probes = {
+        "C_A": {"success": True, "data": {"discount": 1450, "price": 1350}},
+        "C_B": {"success": True, "data": {"discount": 660, "price": 1590}},
+    }
+    probes = parse_coupon_probes(real_probes)
+    assert probes["C_A"].value == 14.5 and probes["C_A"].price == 13.5
+    assert probes["C_B"].value == 6.6 and probes["C_B"].price == 15.9
+    print("   discount 1450 分 → 价值 14.5 元 · price 1350 分 → 用券实付 13.5 元")
+    print("   discount  660 分 → 价值  6.6 元 · price 1590 分 → 用券实付 15.9 元")
+
+    # 关键对比：「王牌小食拼」标题里没有数字，菜单反查识别不出券型
+    reverse = coupon_real_value("王牌小食拼", REAL_MENU_PRICES)
+    print(f"   同一张券：菜单反查 {reverse} 元（识别不出），实测 {probes['C_B'].value} 元")
+    assert reverse == 0.0, "反查确实识别不了这张券，这正是要实测的原因"
+
+    one_coupon = {"data": [{"title": "王牌小食拼", "couponId": "C_B"}]}
+
+    # 有实测 → 必须优先用实测值
+    via_probe = parse_coupon_stock(
+        one_coupon, menu_prices=REAL_MENU_PRICES, probes=probes
+    )
+    assert via_probe[0].value == 6.6, "有实测值时不该退回反查"
+    assert via_probe[0].required_spend == 15.9, "触发成本应取用券实付"
+
+    # 没有实测 → 退回反查；反查也测不出则如实为 0，绝不估算
+    via_reverse = parse_coupon_stock(one_coupon, menu_prices=REAL_MENU_PRICES)
+    assert via_reverse[0].value == 0.0, "无实测且反查不出时应为 0，不估算"
+    print("   [PASS] 实测优先、反查兜底，两条路都不估算")
+    print()
+
+    print("=" * 60)
+    print("6. 端到端：真实数据生成消费审计报告")
     print("=" * 60)
 
     report = audit_report(orders, stock, months=1, today=date(2026, 10, 10))

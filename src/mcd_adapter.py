@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 from auditor import CouponStock, OrderRecord
 from saver import Coupon, Item, Plan, PricedPlan
@@ -418,20 +418,68 @@ def _lookup_price(name: str, menu_prices: dict) -> Optional[float]:
     return None
 
 
+class CouponProbe(NamedTuple):
+    """一张券的**实测**结果（来自带券计价）。"""
+
+    value: float  # 券真实价值（元）—— 计价响应里的 discount
+    price: float  # 用券实付（元）—— 计价响应里的 price，即真实触发成本
+
+
+def parse_coupon_probes(probe_responses: dict) -> dict:
+    """把「带券计价」响应批量解析为 ``{couponId: CouponProbe}``。
+
+    券的真实价值有两种获取方式，本项目优先用第二种
+    -------------------------------------------------
+
+    1. **菜单反查**（`coupon_value_and_cost`）—— 从券名剥离商品名、去菜单查价。
+       不需要额外调用，但只认三种券型；对「王牌小食拼」这类标题里没有数字的券
+       只能返回 0（价值未知）。
+
+    2. **带券计价**（本函数）—— 把券自带的 `productCode` 与 `couponId` /
+       `couponCode` 一起传给 `calculate-price`，返回的 `discount` 就是**精确价值**，
+       `price` 就是用券实付（真实触发成本）。
+
+    实测对比（2026-10-13，门店 1990622）：
+
+    ================== ============ ==============
+    券                  菜单反查      带券计价
+    ================== ============ ==============
+    中薯条买一送一        14.5 元       14.5 元
+    王牌小食拼            0（未知）      **6.6 元**
+    ================== ============ ==============
+
+    反查不但可能低估，还会把真实存在的价值报成 0。因此策略是
+    **能实测就实测，测不到再退回反查** —— 两者都不估算。
+    """
+    probes: dict = {}
+    for coupon_id, response in (probe_responses or {}).items():
+        data = (response or {}).get("data") or {}
+        if not data:
+            continue
+        probes[str(coupon_id)] = CouponProbe(
+            value=cents_to_yuan(data.get("discount")),
+            price=cents_to_yuan(data.get("price")),
+        )
+    return probes
+
+
 def parse_coupon_stock(
     coupon_response: dict,
     menu_prices: Optional[dict] = None,
+    probes: Optional[dict] = None,
 ) -> list[CouponStock]:
     """解析 query-my-coupons 的响应为 auditor.CouponStock 列表。
 
-    券的真实价值由 `coupon_real_value()` 计算：
-    - 满减券直接取减免额
-    - 买一送一 / 固定价券需要 `menu_prices`（由菜单构建）才能算出价值
+    券的真实价值与触发成本，按下面的优先级确定：
 
-    若未提供 menu_prices，则只有满减券能算出价值，其余券 value=0。
-    **绝不估算** —— 无法推算的券价值为 0，报告中会标注为「价值未知」。
+    1. **实测**（`probes`，由 `parse_coupon_probes` 产出）—— 精确
+    2. **菜单反查**（`menu_prices`）—— 买一送一 / 固定价券可算，其余为 0
+
+    若两者都拿不到，value 取 0，报告中标注「价值未知」。
+    **绝不估算** —— 宁可少报，也不编造一个看似合理的数字。
     """
     menu_prices = menu_prices or {}
+    probes = probes or {}
     data = coupon_response.get("data") or []
     if isinstance(data, dict):
         data = data.get("coupons") or data.get("list") or []
@@ -439,8 +487,13 @@ def parse_coupon_stock(
     stock: list[CouponStock] = []
     for raw in data:
         title = str(raw.get("title") or raw.get("name") or "")
+        coupon_id = str(raw.get("couponId") or raw.get("id") or "")
 
-        value, required = coupon_value_and_cost(title, menu_prices)
+        probe = probes.get(coupon_id)
+        if probe is not None:
+            value, required = probe.value, probe.price
+        else:
+            value, required = coupon_value_and_cost(title, menu_prices)
 
         # 门槛只对满减券有意义
         threshold = 0.0
@@ -457,7 +510,7 @@ def parse_coupon_stock(
 
         stock.append(
             CouponStock(
-                coupon_id=str(raw.get("couponId") or raw.get("id") or ""),
+                coupon_id=coupon_id,
                 name=title,
                 value=value,
                 expire_date=expire,
@@ -493,6 +546,7 @@ def build_menu_price_table(menu_response: dict) -> dict:
 
 __all__ = [
     "CENTS_PER_YUAN",
+    "CouponProbe",
     "cents_to_yuan",
     "parse_meal_to_item",
     "parse_menu",
@@ -502,6 +556,7 @@ __all__ = [
     "parse_price_response",
     "extract_threshold_gap",
     "parse_orders",
+    "parse_coupon_probes",
     "parse_coupon_stock",
     "build_menu_price_table",
     "coupon_value_and_cost",

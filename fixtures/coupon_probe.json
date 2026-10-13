@@ -1,0 +1,51 @@
+{
+  "_source": "麦当劳官方 MCP · calculate-price（带券计价）",
+  "_captured_at": "2026-10-13 22:09:50 ~ 22:10:04",
+  "_store": "1990622 麦当劳南京东城汇餐厅 · 到店自取 orderType=1 beType=1",
+  "_note": "把券自带的 productCode 与 couponId/couponCode 一起传给 calculate-price，返回的 discount 就是这张券的精确价值，price 则是用券实付（即真实触发成本）。这是实测发现的、最可靠的券价值获取方式 —— 比从菜单反查商品原价准确：「王牌小食拼」标题里没有数字，反查只能返回 0（价值未知），而实测能拿到真实的 6.6 元。key 为 couponId。",
+  "_unit_warning": "响应中所有金额字段单位均为「分」。1450 表示 14.5 元。",
+  "probes": {
+    "8692944B045928451618BFF22F535D2A": {
+      "success": true,
+      "code": 200,
+      "message": "请求成功",
+      "data": {
+        "productOriginalPrice": 2800,
+        "productPrice": 1350,
+        "originalPrice": 2800,
+        "discount": 1450,
+        "price": 1350,
+        "productList": [
+          {
+            "productCode": "9900012387",
+            "productName": "中薯条买一送一",
+            "quantity": 1,
+            "originalSubtotal": 2800,
+            "subtotal": 1350
+          }
+        ]
+      }
+    },
+    "E05F6BFB4BAFAA5DB44B233583BFE711": {
+      "success": true,
+      "code": 200,
+      "message": "请求成功",
+      "data": {
+        "productOriginalPrice": 2250,
+        "productPrice": 1590,
+        "originalPrice": 2250,
+        "discount": 660,
+        "price": 1590,
+        "productList": [
+          {
+            "productCode": "9900016371",
+            "productName": "王牌小食拼",
+            "quantity": 1,
+            "originalSubtotal": 2250,
+            "subtotal": 1590
+          }
+        ]
+      }
+    }
+  }
+}

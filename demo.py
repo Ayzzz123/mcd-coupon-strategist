@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.join(HERE, "src"))
 from auditor import audit_report, render_audit  # noqa: E402
 from mcd_adapter import (  # noqa: E402
     build_menu_price_table,
+    parse_coupon_probes,
     parse_coupon_stock,
     parse_menu,
     parse_orders,
@@ -80,6 +81,8 @@ MENU = load("menu.json")
 COUPONS = load("coupons.json")
 ORDERS = load("orders.json")
 PRICE_BOOK: dict = load("prices.json")["prices"]
+# 券价值的「带券计价」实测结果，比菜单反查精确（详见 fixtures/README.md）
+COUPON_PROBES: dict = load("coupon_probe.json")["probes"]
 
 
 # --------------------------------------------------------------------------
@@ -192,7 +195,12 @@ def chain_b() -> None:
     refunded = len(raw) - len(orders)
 
     menu_prices = build_menu_price_table(MENU)
-    stock = parse_coupon_stock(COUPONS, menu_prices=menu_prices)
+    # 券价值优先用「带券计价」实测，测不到再退回菜单反查
+    stock = parse_coupon_stock(
+        COUPONS,
+        menu_prices=menu_prices,
+        probes=parse_coupon_probes(COUPON_PROBES),
+    )
 
     # 只统计近 90 天
     since = FIXTURE_TODAY - timedelta(days=OBSERVATION_DAYS)

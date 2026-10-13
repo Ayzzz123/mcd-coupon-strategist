@@ -37,31 +37,73 @@ REAL_MENU_PRICES = {
 
 REAL_ORDERS = {
     "success": True,
-    "data": {"list": [
-        {"orderId": "A1", "orderType": "1", "createTime": "2026-10-02 15:57:36",
-         "beType": "1", "storeCode": "1990622", "storeName": "麦当劳南京东城汇餐厅",
-         "orderStatus": "订单已完成",
-         "orderProductList": [{"productCode": "9900013476", "productName": "随心配1+1",
-                               "quantity": 1, "comboItemList": [
-                                   {"productCode": "1600", "name": "麦香鱼", "quantity": 1},
-                                   {"productCode": "3050", "name": "可乐中杯", "quantity": 1}]}],
-         "realTotalAmount": "1"},
-        {"orderId": "A2", "orderType": "1", "createTime": "2026-09-24 18:23:57",
-         "beType": "1", "storeCode": "1990068", "storeName": "得来速餐厅",
-         "orderStatus": "整单退款",
-         "orderProductList": [{"productCode": "521901", "productName": "月下相思扭扭薯",
-                               "quantity": 1, "comboItemList": []}],
-         "realTotalAmount": "15.5"},
-        {"orderId": "A3", "orderType": "1", "createTime": "2026-08-16 21:27:35",
-         "beType": "1", "storeCode": "1990068", "storeName": "得来速餐厅",
-         "orderStatus": "订单已完成",
-         "orderProductList": [
-             {"productCode": "1700", "productName": "麦辣鸡翅2块", "quantity": 1,
-              "comboItemList": []},
-             {"productCode": "9900015264", "productName": "蘸酱炸鸡五选一", "quantity": 2,
-              "comboItemList": []}],
-         "realTotalAmount": "23.8"},
-    ]},
+    "data": {
+        "list": [
+            {
+                "orderId": "A1",
+                "orderType": "1",
+                "createTime": "2026-10-02 15:57:36",
+                "beType": "1",
+                "storeCode": "1990622",
+                "storeName": "麦当劳南京东城汇餐厅",
+                "orderStatus": "订单已完成",
+                "orderProductList": [
+                    {
+                        "productCode": "9900013476",
+                        "productName": "随心配1+1",
+                        "quantity": 1,
+                        "comboItemList": [
+                            {"productCode": "1600", "name": "麦香鱼", "quantity": 1},
+                            {"productCode": "3050", "name": "可乐中杯", "quantity": 1},
+                        ],
+                    }
+                ],
+                "realTotalAmount": "1",
+            },
+            {
+                "orderId": "A2",
+                "orderType": "1",
+                "createTime": "2026-09-24 18:23:57",
+                "beType": "1",
+                "storeCode": "1990068",
+                "storeName": "得来速餐厅",
+                "orderStatus": "整单退款",
+                "orderProductList": [
+                    {
+                        "productCode": "521901",
+                        "productName": "月下相思扭扭薯",
+                        "quantity": 1,
+                        "comboItemList": [],
+                    }
+                ],
+                "realTotalAmount": "15.5",
+            },
+            {
+                "orderId": "A3",
+                "orderType": "1",
+                "createTime": "2026-08-16 21:27:35",
+                "beType": "1",
+                "storeCode": "1990068",
+                "storeName": "得来速餐厅",
+                "orderStatus": "订单已完成",
+                "orderProductList": [
+                    {
+                        "productCode": "1700",
+                        "productName": "麦辣鸡翅2块",
+                        "quantity": 1,
+                        "comboItemList": [],
+                    },
+                    {
+                        "productCode": "9900015264",
+                        "productName": "蘸酱炸鸡五选一",
+                        "quantity": 2,
+                        "comboItemList": [],
+                    },
+                ],
+                "realTotalAmount": "23.8",
+            },
+        ]
+    },
 }
 
 REAL_COUPONS = {
@@ -76,7 +118,8 @@ REAL_COUPONS = {
 }
 
 
-def main():
+def main() -> None:
+    """用真实订单/券响应验证解析、退款过滤与报告渲染。"""
     print("=" * 60)
     print("1. 订单解析（含退款过滤）")
     print("=" * 60)

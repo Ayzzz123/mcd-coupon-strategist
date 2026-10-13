@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Iterable, Optional
 
 
@@ -38,6 +38,7 @@ class Item:
 
     @property
     def subtotal(self) -> float:
+        """该餐品小计（单价 × 数量），保留两位小数。"""
         return round(self.price * self.qty, 2)
 
 
@@ -81,9 +82,11 @@ class PricedPlan:
 
     @property
     def label(self) -> str:
+        """方案展示名；调用方未指定时按商品构成自动生成。"""
         return self.plan.label or self._auto_label()
 
     def _auto_label(self) -> str:
+        """按「商品名 + 商品名（使用「券名」）」的格式自动生成标签。"""
         names = " + ".join(i.name for i in self.plan.items)
         if self.plan.coupon:
             return f"{names}（使用「{self.plan.coupon.name}」）"
@@ -222,6 +225,7 @@ def detect_filler_trap(priced: list[PricedPlan]) -> list[dict]:
     """
 
     def items_key(p: PricedPlan) -> tuple:
+        """商品构成的规范化指纹，用于把「同商品、仅券不同」的方案分到一组。"""
         return tuple(sorted((i.code, i.qty) for i in p.plan.items))
 
     # 按商品构成分组，同组内比较「用券」与「不用券」

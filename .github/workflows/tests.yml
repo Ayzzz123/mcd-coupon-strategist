@@ -14,6 +14,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  style:
+    name: 代码规范
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      # 零依赖检查器：行宽 / 返回类型标注 / docstring / 未用导入 / __all__ 一致性
+      - name: 规范检查
+        run: python scripts/style_check.py
+
   test:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest

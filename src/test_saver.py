@@ -17,14 +17,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from saver import (  # noqa: E402
     Coupon,
     Item,
+    Plan,
     PricedPlan,
-    detect_filler_trap,
     recommend,
     render,
 )
 
 
-def mock_price_fn(plan):
+def mock_price_fn(plan: Plan) -> PricedPlan:
     """模拟计价器：仅用于逻辑自测。"""
     goods = plan.goods_amount()
     discount = 0.0
@@ -34,7 +34,8 @@ def mock_price_fn(plan):
     return PricedPlan(plan=plan, payable=payable, discount=discount, source="MOCK")
 
 
-def main():
+def main() -> None:
+    """跑一遍省钱枚举的完整场景并断言结果。"""
     mains = [
         Item(code="M001", name="麦辣鸡腿堡", price=22.0, category="汉堡"),
         Item(code="M002", name="双层吉士汉堡", price=25.0, category="汉堡"),

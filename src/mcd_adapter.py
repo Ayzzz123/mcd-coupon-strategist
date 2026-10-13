@@ -19,9 +19,10 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
+from auditor import CouponStock, OrderRecord
 from saver import Coupon, Item, Plan, PricedPlan
 
 
@@ -251,7 +252,7 @@ def extract_threshold_gap(price_response: dict) -> Optional[dict]:
 # --------------------------------------------------------------------------
 
 
-def _parse_datetime(raw: Any):
+def _parse_datetime(raw: Any) -> Optional[date]:
     """解析 MCP 的时间字符串为 date。
 
     支持 "2026-10-02 15:57:36" / "2026-10-02" / ISO 格式。
@@ -272,7 +273,7 @@ def _parse_datetime(raw: Any):
         return None
 
 
-def parse_orders(order_response: dict) -> list:
+def parse_orders(order_response: dict) -> list[OrderRecord]:
     """解析 order-list 的响应为 auditor.OrderRecord 列表。
 
     ⚠️ 注意：`realTotalAmount` 是**字符串型的「元」**（如 "15.5"），
@@ -282,12 +283,10 @@ def parse_orders(order_response: dict) -> list:
     同时会过滤掉「整单退款」的订单 —— 退款单不代表真实消费，
     计入总额会虚高。
     """
-    from auditor import OrderRecord  # 延迟导入，避免循环依赖
-
     data = order_response.get("data") or {}
     raw_list = data.get("list") or []
 
-    records: list = []
+    records: list[OrderRecord] = []
     for o in raw_list:
         status = str(o.get("orderStatus", ""))
         # 整单退款不计入消费
@@ -325,7 +324,11 @@ def parse_orders(order_response: dict) -> list:
     return records
 
 
-def coupon_real_value(coupon_title: str, menu_prices: dict, fallback: float = 0.0) -> float:
+def coupon_real_value(
+    coupon_title: str,
+    menu_prices: dict,
+    fallback: float = 0.0,
+) -> float:
     """从券面文本推算券的**真实价值**（用这张券能省下多少元）。
 
     麦当劳券主要有三种形态，价值算法各不相同：
@@ -406,7 +409,10 @@ def _lookup_price(name: str, menu_prices: dict) -> Optional[float]:
     return None
 
 
-def parse_coupon_stock(coupon_response: dict, menu_prices: Optional[dict] = None) -> list:
+def parse_coupon_stock(
+    coupon_response: dict,
+    menu_prices: Optional[dict] = None,
+) -> list[CouponStock]:
     """解析 query-my-coupons 的响应为 auditor.CouponStock 列表。
 
     券的真实价值由 `coupon_real_value()` 计算：
@@ -416,14 +422,12 @@ def parse_coupon_stock(coupon_response: dict, menu_prices: Optional[dict] = None
     若未提供 menu_prices，则只有满减券能算出价值，其余券 value=0。
     **绝不估算** —— 无法推算的券价值为 0，报告中会标注为「价值未知」。
     """
-    from auditor import CouponStock  # 延迟导入
-
     menu_prices = menu_prices or {}
     data = coupon_response.get("data") or []
     if isinstance(data, dict):
         data = data.get("coupons") or data.get("list") or []
 
-    stock: list = []
+    stock: list[CouponStock] = []
     for raw in data:
         title = str(raw.get("title") or raw.get("name") or "")
 

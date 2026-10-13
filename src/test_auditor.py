@@ -25,7 +25,8 @@ from auditor import (  # noqa: E402
 TODAY = date(2026, 10, 10)
 
 
-def main():
+def main() -> None:
+    """跑一遍审计模块的全部用例并打印报告。"""
     print("=" * 60)
     print("1. 券的沉默成本 —— 基础计算")
     print("=" * 60)
@@ -102,10 +103,11 @@ def main():
     ]
 
     profile = consumption_profile(orders, months=1)
+    top = profile["top_items"][0]
     print(f"   订单数  : {profile['order_count']}")
     print(f"   总支出  : {profile['total_spent']} 元")
     print(f"   客单价  : {profile['avg_per_order']} 元")
-    print(f"   高频餐品: {profile['top_items'][0]['name']} x{profile['top_items'][0]['times']}")
+    print(f"   高频餐品: {top['name']} x{top['times']}")
     print("   洞察：")
     for ins in profile["insights"]:
         print(f"     · {ins}")

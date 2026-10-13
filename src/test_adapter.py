@@ -20,7 +20,7 @@ from mcd_adapter import (  # noqa: E402
     parse_menu,
     parse_price_response,
 )
-from saver import Coupon, Item, Plan  # noqa: E402
+from saver import Item, Plan  # noqa: E402
 
 
 # --- 真实响应片段 ---
@@ -79,7 +79,8 @@ REAL_COUPON = {
 }
 
 
-def main():
+def main() -> None:
+    """用真实响应片段验证适配层的各项解析。"""
     print("=" * 60)
     print("1. 单位换算（分 → 元）")
     print("=" * 60)

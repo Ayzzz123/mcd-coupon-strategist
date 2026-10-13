@@ -61,6 +61,7 @@ BUDGET = 40.0
 
 
 def load(name: str) -> dict:
+    """读取 fixtures/ 下的一个 JSON 文件。"""
     with open(os.path.join(FIXTURES, name), encoding="utf-8") as f:
         return json.load(f)
 
@@ -108,6 +109,7 @@ def recorded_price(plan: Plan) -> PricedPlan:
 
 
 def chain_a() -> None:
+    """链路 A：枚举候选方案并用录制的 calculate-price 结果计价，输出最省方案。"""
     print("=" * 66)
     print("链路 A · 单次省钱")
     print("=" * 66)
@@ -138,6 +140,7 @@ def chain_a() -> None:
 
     # 需求约束：三样必须齐全 —— 这正是不推荐「更便宜但吃不饱」选项的原因
     def satisfies(plan: Plan) -> bool:
+        """三样是否齐全：三件套自带三样，或单点组合同时含汉堡/薯条/可乐。"""
         codes = {i.code for i in plan.items}
         return CODE_COMBO3 in codes or {CODE_BURGER, CODE_FRIES, CODE_COLA} <= codes
 
@@ -168,6 +171,7 @@ def chain_a() -> None:
 
 
 def chain_b() -> None:
+    """链路 B：从历史订单与券存量生成消费审计报告。"""
     print("=" * 66)
     print("链路 B · 消费审计")
     print("=" * 66)
@@ -196,6 +200,7 @@ def chain_b() -> None:
 
 
 def main() -> None:
+    """依次跑通两条链路。"""
     print()
     print("麦麦省钱助手 · 零配置演示")
     print(f"数据：fixtures/ 中录制的真实 MCP 响应（{FIXTURE_TODAY} 采集）")

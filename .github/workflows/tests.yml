@@ -43,7 +43,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # 本项目零第三方依赖，无需 pip install —— 四套测试与 demo 均只依赖标准库
+      # 本项目零第三方依赖，无需 pip install —— 六套测试与 demo 均只依赖标准库
       - name: 单元测试
         run: |
           python src/test_saver.py
@@ -51,6 +51,7 @@ jobs:
           python src/test_planner.py
           python src/test_adapter.py
           python src/test_order_adapter.py
+          python src/test_claimable.py
 
       - name: 端到端 demo（录制的真实 MCP 响应）
         run: python demo.py

@@ -156,14 +156,18 @@ def main() -> None:
     # 固定价券：价值 = 原价 - 固定价
     v = coupon_real_value("9.9元中杯冰美式", {"中杯冰美式": 23.0})
     assert v == 13.1, f"9.9元冰美式应价值 13.1 元，实际 {v}"
+    # 免费券：券面即「免费」，价值 = 商品单价（无需额外消费）
+    assert coupon_real_value("免费脆薯饼", REAL_MENU_PRICES) == 8.0, \
+        "免费券应价值商品单价 8.0 元"
     # 无法匹配的券：保守为 0，不编造
     assert coupon_real_value("神秘券", REAL_MENU_PRICES) == 0.0, \
         "无法匹配菜单的券价值应为 0，不可估算"
     print("   满50减12          → 12.0 元（直接减免）")
     print("   中薯条买一送一     → 14.5 元（菜单反查薯条单价）")
     print("   9.9元中杯冰美式    → 13.1 元（原价 23 - 9.9）")
+    print("   免费脆薯饼         →  8.0 元（免费券：价值 = 商品单价）")
     print("   神秘券            →  0.0 元（无匹配，保守不估算）")
-    print("   [PASS] 三种券形态价值推算正确，无法推算时保守置 0")
+    print("   [PASS] 四种券形态价值推算正确，无法推算时保守置 0")
     print()
 
     print("=" * 60)
@@ -181,13 +185,19 @@ def main() -> None:
     assert c1.expire_date == date(2026, 10, 16), "应从区间中取最后一个日期作为截止日"
     assert c1.value == 14.5, "中薯条买一送一应价值 14.5 元"
 
-    # 无法匹配菜单的券，价值必须为 0（不编造）
+    # 免费券同样能算：价值 = 商品单价，且券面「免费」意味着无需额外消费
     c2 = next(c for c in stock if c.coupon_id == "C2")
-    assert c2.value == 0.0, "「免费脆薯饼」需原价匹配，未提供时应为 0"
+    assert c2.value == 8.0, "「免费脆薯饼」应价值商品单价 8.0 元"
+    assert c2.required_spend == 0.0, "免费券的触发成本应为 0（券面即免费）"
+
+    # 菜单中查不到对应商品的券，价值必须为 0（不编造）
+    c3 = next(c for c in stock if c.coupon_id == "C3")
+    assert c3.value == 0.0, "菜单中无对应商品时应为 0，不可估算"
 
     total_value = sum(c.value for c in stock)
     print(f"   券面总价值: {total_value} 元")
-    assert total_value == 14.5, f"仅买一送一券可算出价值，合计应为 14.5，实际 {total_value}"
+    assert total_value == 22.5, \
+        f"买一送一 14.5 + 免费券 8.0 = 22.5，实际 {total_value}"
     print("   [PASS] 有效期与价值解析正确")
     print()
 

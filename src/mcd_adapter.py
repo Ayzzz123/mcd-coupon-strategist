@@ -144,6 +144,14 @@ _DISCOUNT_RE = re.compile(r"减\s*(\d+(?:\.\d+)?)")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 # 匹配「9.9元中杯冰美式」形态：数字 + 元
 _FIXED_PRICE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*元")
+# 匹配「免费脆薯饼」形态：券面直接写「免费」
+_FREE_RE = re.compile(r"^免费\s*(.+)$")
+
+
+def _threshold_of(title: str) -> float:
+    """从券面文本取出满减门槛（元）；非满减券返回 0。"""
+    m = _THRESHOLD_RE.search(title)
+    return float(m.group(1)) if m else 0.0
 
 
 def parse_coupon(raw: dict) -> Coupon:
@@ -335,6 +343,7 @@ def coupon_value_and_cost(
     ========== ==================== =============== ==================
     满减        满50减12               12（减免额）      50（门槛）
     买一送一     中薯条买一送一           商品单价          商品单价（买一件）
+    免费        免费脆薯饼              商品单价          0（券面即免费）
     固定价      9.9元中杯冰美式          原价 − 9.9      原价
     ========== ==================== =============== ==================
 
@@ -343,6 +352,10 @@ def coupon_value_and_cost(
 
     无法与菜单对应上时返回 ``(0.0, 0.0)``，**绝不估算**：
     宁可少报价值，也不编造一个看似合理的数字。
+
+    已知局限（免费券）：券面写「免费」即按字面视为无需额外消费，与
+    「满50减12」按字面读门槛是同一个标准。若该券实际要求随单购买，
+    券面并无体现 —— 这种情况下本函数会高估其净价值。
     """
     title = coupon_title.strip()
 
@@ -362,7 +375,15 @@ def coupon_value_and_cost(
             return round(price, 2), round(price, 2)
         return 0.0, 0.0
 
-    # 形态 3：固定价券「9.9元xxx」—— 价值是原价与固定价之差
+    # 形态 3：免费券 —— 券面即「免费」，价值等于商品单价、无需额外消费
+    m_free = _FREE_RE.match(title)
+    if m_free:
+        price = _lookup_price(m_free.group(1).strip(), menu_prices)
+        if price is not None:
+            return round(price, 2), 0.0
+        return 0.0, 0.0
+
+    # 形态 4：固定价券「9.9元xxx」—— 价值是原价与固定价之差
     m_fixed = _FIXED_PRICE_RE.search(title)
     if m_fixed:
         fixed = float(m_fixed.group(1))
@@ -496,10 +517,7 @@ def parse_coupon_stock(
             value, required = coupon_value_and_cost(title, menu_prices)
 
         # 门槛只对满减券有意义
-        threshold = 0.0
-        m_th = _THRESHOLD_RE.search(title)
-        if m_th:
-            threshold = float(m_th.group(1))
+        threshold = _threshold_of(title)
 
         # 有效期：tradeDateTime 形如 "2026-10-12 10:30-2026-10-16 23:59"
         expire = None
@@ -544,8 +562,144 @@ def build_menu_price_table(menu_response: dict) -> dict:
     return table
 
 
+# --------------------------------------------------------------------------
+# 麦麦省券列表（含「还没领的」）
+# --------------------------------------------------------------------------
+
+# 该工具输出的是 Markdown 文本，按「优惠券标题 / 状态」两个字段逐行解析
+_AVAILABLE_TITLE_RE = re.compile(r"优惠券标题[：:]\s*(.+)")
+_AVAILABLE_STATUS_RE = re.compile(r"状态[：:]\s*(.+)")
+
+
+class AvailableCoupon(NamedTuple):
+    """麦麦省里的一张券及其领取状态（来自 `available-coupons`）。"""
+
+    name: str
+    claimed: Optional[bool]  # True=已领取；False=可领取；None=状态无法识别
+
+
+def _available_text(response: Any) -> str:
+    """从 `available-coupons` 的响应中取出可解析的文本。"""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        for key in ("raw", "text", "content", "message"):
+            value = response.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    return ""
+
+
+def _claim_status(status: str) -> Optional[bool]:
+    """把券状态文案归一为「是否已领取」；无法识别时返回 None。
+
+    **只认「可领取」为未领取** —— 出现没见过的状态（如「已使用」）时返回
+    None，让调用方把它排除在「可领取」之外，而不是想当然地当成没领。
+    """
+    if "已领取" in status:
+        return True
+    if "可领取" in status:
+        return False
+    return None
+
+
+def parse_available_coupons(response: Any) -> list[AvailableCoupon]:
+    """解析 `available-coupons` 的响应为券列表（含领取状态）。
+
+    ⚠️ **该工具返回的不是 JSON，而是 Markdown 文本**（实测 2026-10-13）：
+
+        ### 麦麦省优惠券列表：
+        - 优惠券标题：免费脆薯饼 \\
+          状态：可领取 \\
+          ...
+
+    因此这里按「优惠券标题 / 状态」两个字段逐行解析，并对行尾反斜杠与
+    多余空白做容错。传入 dict 时会先尝试取其中的文本（如 `raw` 字段）。
+
+    该工具**不返回** couponId、面值、有效期或商品码 —— 这些一律不臆测。
+    缺少状态的券仍会返回，但 `claimed` 为 None（不静默丢弃）。
+    """
+    text = _available_text(response)
+    if not text:
+        return []
+
+    coupons: list[AvailableCoupon] = []
+    pending: Optional[str] = None
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip().rstrip("\\").strip()
+        if not line:
+            continue
+
+        m_title = _AVAILABLE_TITLE_RE.search(line)
+        if m_title:
+            if pending is not None:  # 上一张缺状态，如实收下而不是丢掉
+                coupons.append(AvailableCoupon(pending, None))
+            pending = m_title.group(1).strip()
+            continue
+
+        m_status = _AVAILABLE_STATUS_RE.search(line)
+        if m_status and pending is not None:
+            coupons.append(AvailableCoupon(pending, _claim_status(m_status.group(1))))
+            pending = None
+
+    if pending is not None:
+        coupons.append(AvailableCoupon(pending, None))
+
+    return coupons
+
+
+def parse_claimable_coupons(
+    coupon_response: Any,
+    menu_prices: Optional[dict] = None,
+) -> list[CouponStock]:
+    """解析 `available-coupons`，取出**尚未领取**的券（作为 CouponStock）。
+
+    价值遵循与已领取券相同的优先级，但这一批券**没有 couponId**
+    （该工具不返回），因此「带券计价实测」这条途径天然不可用，
+    只能靠菜单反查（`coupon_value_and_cost`）。查不到时 value 取 0，
+    报告中标注「价值未知」—— 两条路都不估算。
+
+    两个字段需要特别说明：
+
+    - `coupon_id` 一律为空字符串 —— 该工具不返回 ID
+    - `expire_date` 一律为 None —— **这不代表无期限，而是未知**。
+      券包体检里 None 表示无期限，这里必须按「未知」解读，
+      所以渲染时不要套用 `CouponVerdict.expiry_text()`
+      （见 `planner.render_claimable`）。
+
+    同名券只保留一张 —— 领取是不可重复的动作，重复提示没有意义。
+    状态无法识别的券一律不进入本列表（宁可不提示，也不误报）。
+    """
+    menu_prices = menu_prices or {}
+
+    seen: set[str] = set()
+    stock: list[CouponStock] = []
+    for coupon in parse_available_coupons(coupon_response):
+        if coupon.claimed is not False:
+            continue
+        if coupon.name in seen:
+            continue
+        seen.add(coupon.name)
+
+        value, required = coupon_value_and_cost(coupon.name, menu_prices)
+        stock.append(
+            CouponStock(
+                coupon_id="",
+                name=coupon.name,
+                value=value,
+                expire_date=None,  # 未知，不是无期限
+                threshold=_threshold_of(coupon.name),
+                required_spend=required,
+            )
+        )
+
+    return stock
+
+
 __all__ = [
     "CENTS_PER_YUAN",
+    "AvailableCoupon",
     "CouponProbe",
     "cents_to_yuan",
     "parse_meal_to_item",
@@ -556,6 +710,8 @@ __all__ = [
     "parse_price_response",
     "extract_threshold_gap",
     "parse_orders",
+    "parse_available_coupons",
+    "parse_claimable_coupons",
     "parse_coupon_probes",
     "parse_coupon_stock",
     "build_menu_price_table",

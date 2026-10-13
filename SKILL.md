@@ -1,6 +1,6 @@
 ---
 name: mcd-coupon-strategist
-description: 麦麦省钱助手。基于麦当劳中国 MCP 的实时菜单、门店优惠券与计价能力，计算当前门店下最省钱的点餐方案（附省钱归因与凑单陷阱提示），并审计历史订单与券存量、量化即将过期券的「沉默成本」、对券包做净价值体检（哪些券该用、哪些别用）。当用户提到「麦当劳怎么点最便宜」「麦麦省钱」「帮我算一下这单划不划算」「用哪张券合适」「预算多少能吃什么」「我最近在麦当劳花了多少」「有没有券快过期了」「这些券该怎么用」时使用本 Skill。
+description: 麦麦省钱助手。基于麦当劳中国 MCP 的实时菜单、门店优惠券与计价能力，计算当前门店下最省钱的点餐方案（附省钱归因与凑单陷阱提示），并审计历史订单与券存量、量化即将过期券的「沉默成本」、对券包做净价值体检（哪些券该用、哪些别用）、在有限点单机会下安排用券，以及发现麦麦省里还没领取的券（哪些值得领）。当用户提到「麦当劳怎么点最便宜」「麦麦省钱」「帮我算一下这单划不划算」「用哪张券合适」「预算多少能吃什么」「我最近在麦当劳花了多少」「有没有券快过期了」「这些券该怎么用」「有什么券可以领」时使用本 Skill。
 agent_created: true
 ---
 
@@ -42,6 +42,11 @@ agent_created: true
 7. **不构成营养或医疗建议。** 调用 `list-nutrition-foods` 时，仅作为参考信息呈现。
 8. **券面价值 ≠ 真实价值。** 给用券建议时必须扣掉「为用它而额外多花的钱」；
    净价值为负的券要**明确劝退**，而不是笼统地说「你有券可以用」。
+9. **不擅自改动账号状态。** 领取券（`auto-bind-coupons`）是**写操作**，会真实改动
+   用户的账号。必须先说明「有哪几张可领、值不值」，**取得用户明确同意后再执行** ——
+   不要替用户做决定。
+10. **不知道就说不知道。** 未领取的券拿不到有效期，渲染时**不要输出剩余天数**，
+    更不要把「未知」说成「无期限」。
 
 ## 配套资源
 
@@ -49,10 +54,10 @@ MCP 原始响应**必须先经适配层转换**，再进入业务逻辑。动手
 
 | 文件 | 作用 | 关键入口 |
 |---|---|---|
-| `src/mcd_adapter.py` | 响应 → 领域对象；**全员唯一的「分→元」换算点** | `cents_to_yuan` `parse_menu` `parse_coupons` `parse_orders` `coupon_value_and_cost` `build_menu_price_table` |
+| `src/mcd_adapter.py` | 响应 → 领域对象；**全员唯一的「分→元」换算点** | `cents_to_yuan` `parse_menu` `parse_coupons` `parse_orders` `coupon_value_and_cost` `build_menu_price_table` `parse_available_coupons` `parse_claimable_coupons` |
 | `src/saver.py` | 链路 A：枚举、排序、陷阱检测、渲染 | `build_base_plans` `attach_coupons` `build_filler_plans` `rank` `within_budget` `detect_filler_trap` `recommend` `render` |
 | `src/auditor.py` | 链路 B：沉默成本、消费画像、报告渲染 | `coupon_silent_cost` `consumption_profile` `audit_report` `render_audit` |
-| `src/planner.py` | 链路 B：券包体检（净价值）+ 用券排程（机会分配） | `classify_coupon` `audit_coupon_portfolio` `render_portfolio` `order_frequency` `plan_redemption` `render_schedule` |
+| `src/planner.py` | 链路 B：券包体检（净价值）+ 用券排程（机会分配）+ 可领取券预判 | `classify_coupon` `audit_coupon_portfolio` `render_portfolio` `order_frequency` `plan_redemption` `render_schedule` `audit_claimable` `render_claimable` |
 
 **工具的完整调用契约（实测必传参数、字段名、单位方向）见 [`MCP_INTEGRATION.md`](./MCP_INTEGRATION.md) 第 2.3 节** —— 动手前先查那张表，不要凭记忆传参。
 
@@ -263,6 +268,41 @@ MCP 原始响应**必须先经适配层转换**，再进入业务逻辑。动手
 
 「纸面富贵」（净价值 ≤ 0）不参与排程 —— 那些券本就在劝退之列。
 
+### 第七步：还没领的券
+
+前六步看的都是**已经领到手**的券。但用户的券源不止这些 ——
+`available-coupons` 会同时返回「已领取」与**还没领**的券。
+
+> ⚠️ **该工具返回的是 Markdown 文本，不是 JSON**，且**不接受任何参数**
+> （返回账户全域的券，不限于某个门店）。解析走 `parse_available_coupons()`。
+> 详细契约见 `MCP_INTEGRATION.md` 2.3 节。
+
+用 `parse_claimable_coupons()` 取出未领取的部分（自动排除状态无法识别的券、
+同名去重），再用**同一套净价值框架**判定 —— 但问的是不同的问题：
+
+| 券包体检问 | 可领取券问 | 类别文案 |
+|---|---|---|
+| 这张券该不该**用** | 这张券该不该**领** | 领了就能用 / 领了要凑一点 / **领了也用不上** |
+
+调用 `planner.audit_claimable()` 与 `planner.render_claimable()`。
+
+四个必须遵守的细节：
+
+1. **这批券没有 `couponId`**（工具不返回），所以「带券计价实测」走不通，
+   只能靠菜单反查；查不到就如实标「价值未知」。**不要为了凑出数字而猜。**
+2. **不输出剩余天数** —— 有效期未知，不要套用 `expiry_text()`
+   （它会把 None 说成「无期限」，那是编造）。
+3. **它们不进用券排程** —— 排程的窗口天数是靠有效期算出来的。
+4. **领取要用户点头。** 把「有哪几张可领、哪张值得领」摆清楚就好；
+   执行 `auto-bind-coupons` 前必须取得明确同意。
+
+结尾要点出**「领券是免费的，但为了用它而消费不是」**，并把机会约束带上 ——
+`render_claimable(report, remaining_slots=...)` 的 `remaining_slots` 传
+「排程的机会数 − 已安排数」，用来提醒：券不是越多越好，用得上才算数。
+
+**另一条增强**：券值无法反查的券，可以在用户同意领取后用带券计价实测出精确价值
+（`parse_coupon_probes`）—— 这是把「价值未知」变成「精确价值」的唯一途径。
+
 ---
 
 ## 可选增强
@@ -287,4 +327,6 @@ MCP 原始响应**必须先经适配层转换**，再进入业务逻辑。动手
 - [ ] 门店上下文已确定，且未混用其他门店的价格？
 - [ ] 凑单方案已与不凑单方案做对照，陷阱有被点出或明确排除？
 - [ ] 券价值无从反查时取了 0 并标注，而不是编造？
+- [ ] 未领取的券**没有**输出剩余天数？（它们的有效期是未知，不是无期限）
+- [ ] 需要领券时，是否已先取得用户明确同意？没有擅自执行 `auto-bind-coupons`？
 - [ ] 输出包含省钱归因（省在哪、为什么）？

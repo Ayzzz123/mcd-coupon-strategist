@@ -30,6 +30,8 @@ sys.path.insert(0, os.path.join(HERE, "src"))
 from auditor import audit_report, render_audit  # noqa: E402
 from mcd_adapter import (  # noqa: E402
     build_menu_price_table,
+    parse_available_coupons,
+    parse_claimable_coupons,
     parse_coupon_probes,
     parse_coupon_stock,
     parse_menu,
@@ -37,9 +39,11 @@ from mcd_adapter import (  # noqa: E402
     parse_price_response,
 )
 from planner import (  # noqa: E402
+    audit_claimable,
     audit_coupon_portfolio,
     order_frequency,
     plan_redemption,
+    render_claimable,
     render_portfolio,
     render_schedule,
 )
@@ -83,6 +87,8 @@ ORDERS = load("orders.json")
 PRICE_BOOK: dict = load("prices.json")["prices"]
 # 券价值的「带券计价」实测结果，比菜单反查精确（详见 fixtures/README.md）
 COUPON_PROBES: dict = load("coupon_probe.json")["probes"]
+# 麦麦省券列表（含还没领取的）。该工具返回 Markdown 文本，不是 JSON
+AVAILABLE = load("available_coupons.json")
 
 
 # --------------------------------------------------------------------------
@@ -235,6 +241,27 @@ def chain_b() -> None:
         today=FIXTURE_TODAY,
     )
     print(render_schedule(schedule))
+    print()
+
+    # 待领取的券：你的券源不止手里这些 —— 麦麦省里还有没领的。
+    # 这批券没有 couponId（该工具不返回），因此「带券计价实测」用不上，
+    # 只能靠菜单反查；查不到就如实标「未知」，不猜。
+    all_coupons = parse_available_coupons(AVAILABLE)
+    claimable = parse_claimable_coupons(AVAILABLE, menu_prices=menu_prices)
+    claimed_count = sum(1 for c in all_coupons if c.claimed is True)
+
+    print(
+        f"  麦麦省共 {len(all_coupons)} 条券记录：已领取 {claimed_count} 条、"
+        f"可领取 {len(claimable)} 条（同名去重后）"
+    )
+    print()
+
+    claim_report = audit_claimable(
+        claimable, natural_spend=report["profile"]["avg_per_order"]
+    )
+    # 排程已用掉的机会数 —— 用来提醒「领来的券同样要抢这些机会」
+    remaining_slots = schedule.opportunities - len(schedule.scheduled)
+    print(render_claimable(claim_report, remaining_slots=remaining_slots))
     print()
 
 

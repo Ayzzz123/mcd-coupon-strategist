@@ -244,34 +244,33 @@ def _narrative(count: int, face_total: float, realizable: float, gap: float) -> 
 
 
 def _format_direct(v: CouponVerdict) -> str:
-    """渲染「顺手可用」的一条。"""
-    return f"  · {v.name}    净省 {v.net_value} 元    {v.expiry_text()}"
+    """渲染「顺手可用」的金额部分（有效期由调用方按需追加）。"""
+    return f"  · {v.name}    净省 {v.net_value} 元"
 
 
 def _format_stretch(v: CouponVerdict) -> str:
-    """渲染「努一把」的一条。
+    """渲染「努一把」的金额部分。
 
-    措辞保持券型无关 —— 满减券看门槛，买一送一/固定价券看商品价，
+    措辞保持券型无关 —— 满减券看门槛，买一送一/免费/固定价券看商品价，
     对用户而言都是「比平时的消费多掏多少」。
     """
     return (
         f"  · {v.name}    需额外消费 {v.extra_spend} 元，"
-        f"净赚 {v.net_value} 元    {v.expiry_text()}"
+        f"净赚 {v.net_value} 元"
     )
 
 
 def _format_paper(v: CouponVerdict) -> str:
-    """渲染「纸面富贵」的一条 —— 说清为什么劝退。"""
+    """渲染「纸面富贵」的金额部分 —— 说清为什么劝退。"""
     return (
         f"  · {v.name}    名义省 {v.face_value} 元，"
         f"但需额外消费 {v.extra_spend} 元 → 净亏 {abs(v.net_value)} 元"
-        f"    {v.expiry_text()}"
     )
 
 
 def _format_unknown(v: CouponVerdict) -> str:
-    """渲染「无法判断」的一条。"""
-    return f"  · {v.name}    菜单中无对应商品，未估算    {v.expiry_text()}"
+    """渲染「无法判断」的金额部分。"""
+    return f"  · {v.name}    菜单中无对应商品，未估算"
 
 
 _FORMATTERS = {
@@ -289,22 +288,32 @@ _HEADINGS = {
 }
 
 
-def _category_summary(category: str, report: dict) -> str:
-    """各类别标题后缀 —— 直接把这类券涉及的钱标出来。"""
+def _category_summary(
+    category: str,
+    report: dict,
+    headings: Optional[dict] = None,
+) -> str:
+    """各类别标题后缀 —— 直接把这类券涉及的钱标出来。
+
+    `headings` 可换一套口径（券包体检说「顺手可用」，可领取券说「领了就能用」）。
+    """
+    headings = headings or _HEADINGS
     items = (report.get("by_category") or {}).get(category) or []
     count = len(items)
 
     if category == CATEGORY_DIRECT:
         money = round(sum(v.net_value for v in items), 2)
-        return f"【{_HEADINGS[category]}】{count} 张 · 净省 ¥{money}"
+        return f"【{headings[category]}】{count} 张 · 净省 ¥{money}"
     if category == CATEGORY_STRETCH:
         gain = round(sum(v.net_value for v in items), 2)
         cost = round(sum(v.extra_spend for v in items), 2)
-        return f"【{_HEADINGS[category]}】{count} 张 · 净赚 ¥{gain}（需额外消费 ¥{cost}）"
+        return f"【{headings[category]}】{count} 张 · 净赚 ¥{gain}（需额外消费 ¥{cost}）"
     if category == CATEGORY_PAPER:
         face = round(sum(v.face_value for v in items), 2)
-        return f"【{_HEADINGS[category]}】{count} 张 · 名义 ¥{face}"
-    return f"【{_HEADINGS[category]}】{count} 张"
+        if face > 0:
+            return f"【{headings[category]}】{count} 张 · 名义 ¥{face}"
+        return f"【{headings[category]}】{count} 张"
+    return f"【{headings[category]}】{count} 张"
 
 
 def render_portfolio(report: dict) -> str:
@@ -340,7 +349,7 @@ def render_portfolio(report: dict) -> str:
         lines.append(_category_summary(category, report))
         formatter = _FORMATTERS[category]
         for verdict in items:
-            lines.append(formatter(verdict))
+            lines.append(f"{formatter(verdict)}    {verdict.expiry_text()}")
         lines.append("")
 
     lines += [_RULE, _conclusion(report)]
@@ -560,6 +569,115 @@ def render_schedule(plan: RedemptionPlan) -> str:
     return "\n".join(lines).rstrip()
 
 
+# --------------------------------------------------------------------------
+# 可领取的券（还没进你的账号）
+# --------------------------------------------------------------------------
+
+# 复用同一套金额文案，但换一套「领了会怎样」的标题 —— 这里的问题是「领不领」
+_CLAIMABLE_HEADINGS = {
+    CATEGORY_DIRECT: "领了就能用",
+    CATEGORY_STRETCH: "领了要凑一点",
+    CATEGORY_PAPER: "领了也用不上",
+    CATEGORY_UNKNOWN: "无法判断",
+}
+
+
+def audit_claimable(
+    coupons: list[CouponStock],
+    natural_spend: float,
+) -> dict:
+    """对**还没领取**的券做净价值预判。
+
+    与 `audit_coupon_portfolio` 用的是同一套净价值框架，差别只在问题：
+    那边问「这张券该不该用」，这里问「这张券该不该领」。
+    因此结果里额外补了一个 `worthwhile`（值得领的张数）。
+
+    结构上唯一的差异是：**这些券没有有效期**（工具不返回），
+    所以它们不进用券排程 —— 排程的窗口天数是靠有效期算出来的。
+    相应地渲染时也不输出剩余天数，见 `render_claimable`。
+    """
+    report = audit_coupon_portfolio(coupons, natural_spend)
+    report["worthwhile"] = sum(1 for v in report["verdicts"] if v.is_realizable)
+    return report
+
+
+def _claimable_conclusion(report: dict, remaining_slots: Optional[int]) -> str:
+    """生成「可领取的券」的结尾建议（可能多行）。"""
+    counts = report.get("counts") or {}
+    worthwhile = report.get("worthwhile", 0)
+    realizable = report.get("realizable", 0.0)
+    paper = counts.get(CATEGORY_PAPER, 0)
+    unknown = counts.get(CATEGORY_UNKNOWN, 0)
+
+    lines: list[str] = []
+    if worthwhile and realizable > 0:
+        lines.append(
+            f"{worthwhile} 张领了就能用上（合计 ¥{realizable}），先领这几张。"
+        )
+    if paper:
+        pronoun = "它" if paper == 1 else "它们"
+        lines.append(f"{paper} 张领了也用不上：为{pronoun}多花的钱 ≥ 券面价值。")
+    if unknown:
+        lines.append(
+            f"{unknown} 张的价值无法从券面推算 —— 我们不猜；"
+            f"领取后可以用「带券计价」实测出精确价值。"
+        )
+    if remaining_slots is not None:
+        if remaining_slots > 0:
+            lines.append(
+                f"另外别忘了机会有限：上面排程算出窗口内你还能点 {remaining_slots} 单，"
+                f"券不是越多越好，用得上才算数。"
+            )
+        else:
+            lines.append(
+                "另外别忘了机会有限：上面排程算出，窗口内的点单机会已被你手里的券占满 —— "
+                "券不是越多越好，用得上才算数。"
+            )
+    return "\n".join(lines) if lines else "这几张券暂时没有可利用空间。"
+
+
+def render_claimable(report: dict, remaining_slots: Optional[int] = None) -> str:
+    """把「可领取的券」的预判结果渲染成面向用户的文本。
+
+    与 `render_portfolio` 的两处刻意差异：
+
+    1. 类别标题换成「领了会怎样」的口径 —— 这里问的是「领不领」而非「用不用」
+    2. **不输出剩余天数** —— 该工具不返回有效期，我们不知道就不编。
+       这是本模块唯一一处「信息缺失」，靠不渲染来体现，
+       而不是让 `expiry_text()` 把 None 说成「无期限」。
+    """
+    verdicts = report.get("verdicts") or []
+    if not verdicts:
+        return "没有可领取的券 —— 麦麦省里的券你都已经领到手了。"
+
+    by_category = report.get("by_category") or {}
+    lines: list[str] = [_RULE, "可领取的券", _RULE, ""]
+
+    headline = f"  你还有 {len(verdicts)} 张券没领（领取免费）"
+    if report.get("face_total", 0) > 0:
+        headline += f" · 可确认价值 ¥{report['face_total']}"
+    lines.append(headline)
+    lines.append("")
+
+    for category in (
+        CATEGORY_DIRECT,
+        CATEGORY_STRETCH,
+        CATEGORY_PAPER,
+        CATEGORY_UNKNOWN,
+    ):
+        items = by_category.get(category) or []
+        if not items:
+            continue
+        lines.append(_category_summary(category, report, _CLAIMABLE_HEADINGS))
+        formatter = _FORMATTERS[category]
+        for verdict in items:
+            lines.append(formatter(verdict))
+        lines.append("")
+
+    lines += [_RULE, _claimable_conclusion(report, remaining_slots)]
+    return "\n".join(lines).rstrip()
+
+
 __all__ = [
     "CATEGORY_DIRECT",
     "CATEGORY_LABELS",
@@ -569,10 +687,12 @@ __all__ = [
     "CouponVerdict",
     "RedemptionPlan",
     "ScheduledCoupon",
+    "audit_claimable",
     "audit_coupon_portfolio",
     "classify_coupon",
     "order_frequency",
     "plan_redemption",
+    "render_claimable",
     "render_portfolio",
     "render_schedule",
 ]

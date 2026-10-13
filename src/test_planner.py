@@ -1,6 +1,6 @@
 """planner.py 的自测脚本。
 
-重点验证：四类净价值判定、临界值、以及券包汇总数字。
+重点验证：四类净价值判定、临界值、券包汇总，以及用券排程的机会约束。
 
 运行：
     python src/test_planner.py
@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from auditor import CouponStock  # noqa: E402
+from auditor import CouponStock, OrderRecord  # noqa: E402
 from planner import (  # noqa: E402
     CATEGORY_DIRECT,
     CATEGORY_PAPER,
@@ -20,7 +20,10 @@ from planner import (  # noqa: E402
     CATEGORY_UNKNOWN,
     audit_coupon_portfolio,
     classify_coupon,
+    order_frequency,
+    plan_redemption,
     render_portfolio,
+    render_schedule,
 )
 
 TODAY = date(2026, 10, 13)
@@ -172,8 +175,81 @@ def main() -> None:
         assert key in text, f"渲染结果缺少「{key}」"
     print("[PASS] 报告渲染包含全部关键信息")
     print()
+
     print("=" * 60)
-    print("全部券包体检测试通过")
+    print("7. 用券排程：机会不足")
+    print("=" * 60)
+
+    # 窗口 20 天 × 频率 0.09 → floor(1.8) = 1 次机会；可用券有 2 张
+    pool = [
+        coupon("a", "满20减12", 12.0, 20.0, days=20),
+        coupon("b", "免费脆薯饼", 5.0, 5.0, days=20),
+        coupon("c", "满50减12", 12.0, 50.0, days=20),
+    ]
+    plan = plan_redemption(pool, natural_spend=13.0, frequency=0.09, today=TODAY)
+    print(f"   窗口 {plan.window_days} 天 / 机会 {plan.opportunities} 次")
+    print(f"   排上 {len(plan.scheduled)} 张，排不上 {len(plan.missed)} 张")
+    print(f"   可拿到 ¥{plan.captured} / 可实现 ¥{plan.realizable_total}")
+
+    assert plan.opportunities == 1, "20 × 0.09 应向下取整为 1"
+    assert len(plan.scheduled) == 1 and len(plan.missed) == 1, (
+        "3 张券里 1 张纸面富贵不参与排程，剩 2 张可用但只有 1 次机会"
+    )
+    assert plan.captured == 5.0 and plan.missed_value == 5.0
+    assert plan.realizable_total == 10.0
+    assert all(v.category != CATEGORY_PAPER for v in plan.missed), (
+        "纸面富贵券不该出现在排程里"
+    )
+    print("   [PASS] 机会不足时正确区分「排得上」与「注定浪费」")
+    print()
+
+    print("=" * 60)
+    print("8. 排程边界：机会充足 / 零频率 / 全部过期")
+    print("=" * 60)
+
+    rich = plan_redemption(pool, 13.0, frequency=1.0, today=TODAY)
+    print(f"   频率 1.0 → 机会 {rich.opportunities} 次，排不上 {len(rich.missed)} 张")
+    assert rich.opportunities == 20 and not rich.missed
+    assert rich.captured == 10.0
+
+    none = plan_redemption(pool, 13.0, frequency=0.0, today=TODAY)
+    print(f"   频率 0.0 → 机会 {none.opportunities} 次")
+    assert none.opportunities == 0 and not none.scheduled
+    assert "无法排程" in render_schedule(none), "无频率时应如实说明，而不是编一个排程"
+
+    gone = plan_redemption(
+        [coupon("d", "过期券", 10.0, 10.0, days=-1)], 13.0, frequency=1.0, today=TODAY
+    )
+    print(f"   全部过期 → 已过期 {len(gone.expired)} 张，可排 {len(gone.scheduled)} 张")
+    assert len(gone.expired) == 1 and not gone.scheduled
+    print("   [PASS] 三处边界处理正确")
+    print()
+
+    print("=" * 60)
+    print("9. 点单频率推算")
+    print("=" * 60)
+    order = OrderRecord(TODAY, 10.0, ["某餐品"], "到店")
+    freq = order_frequency([order] * 9, 90)
+    print(f"   90 天 9 单 → {freq} 单/天")
+    assert freq == 0.1
+    assert order_frequency([], 90) == 0.0
+    assert order_frequency([order], 0) == 0.0, "观察天数为 0 时不应除零"
+    print("   [PASS] 频率推算与除零保护正确")
+    print()
+
+    print("=" * 60)
+    print("10. 排程完整渲染")
+    print("=" * 60)
+    schedule_text = render_schedule(plan)
+    print(schedule_text)
+    print()
+
+    for key in ("用券排程", "窗口", "建议安排", "排不上", "注定随券过期浪费"):
+        assert key in schedule_text, f"排程渲染缺少「{key}」"
+    print("[PASS] 排程渲染包含全部关键信息")
+    print()
+    print("=" * 60)
+    print("全部券包体检与用券排程测试通过")
     print("=" * 60)
 
 

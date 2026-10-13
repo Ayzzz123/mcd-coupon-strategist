@@ -34,15 +34,27 @@ unknown    无法判断 —— 券面无法反查到原价，按铁律不估算
 本模块**不估算任何金额**：券面价值与触发成本都来自菜单反查
 （`mcd_adapter.coupon_value_and_cost`），消费基准来自真实历史订单
 （`auditor.consumption_profile`）。
+
+## 第二层：用券排程
+
+上面算出的「可实现 ¥60」有个隐含前提 —— **这些券你都有机会用掉**。
+但真实情况是：券会过期，而你点单的次数有限。
+
+于是有了第二层：``plan_redemption()``。它先推算「券全部过期前你还会点几单」，
+再在这个约束下分配券。结论往往更扎心：
+
+    可实现的 ¥60，你其实只拿得到 ¥25 —— 剩下 ¥35 随券一起过期
+
+**可实现的券，未必用得上。** 这是本模块区别于「券面价值加总」的关键一步。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
+from typing import Optional, Sequence
 
-from auditor import CouponStock
+from auditor import CouponStock, OrderRecord
 
 CATEGORY_DIRECT = "direct"
 CATEGORY_STRETCH = "stretch"
@@ -361,6 +373,193 @@ def _conclusion(report: dict) -> str:
     return "\n".join(parts) if parts else "券包整体没有可利用空间，可以放心。"
 
 
+# --------------------------------------------------------------------------
+# 用券排程
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class ScheduledCoupon:
+    """排程中安排到的一次用券机会。"""
+
+    slot: int  # 第几单（1 起）
+    verdict: CouponVerdict
+
+
+@dataclass
+class RedemptionPlan:
+    """用券排程结果。"""
+
+    window_days: int  # 窗口天数（券全部过期前的天数）
+    frequency: float  # 点单频率（单/天）
+    opportunities: int  # 窗口内还会点几单
+    scheduled: list[ScheduledCoupon]  # 安排得上的
+    missed: list[CouponVerdict]  # 有净价值却排不上（注定浪费）
+    unjudgeable: list[CouponVerdict]  # 券面价值无法反查
+    expired: list[CouponVerdict]  # 已过期
+
+    @property
+    def captured(self) -> float:
+        """排程之后真正能拿到的净价值。"""
+        return round(sum(s.verdict.net_value for s in self.scheduled), 2)
+
+    @property
+    def missed_value(self) -> float:
+        """有净价值、但因机会不够而注定拿不到的金额。"""
+        return round(sum(v.net_value for v in self.missed), 2)
+
+    @property
+    def realizable_total(self) -> float:
+        """排程前的「可实现」总额（排得上 + 排不上）。"""
+        return round(self.captured + self.missed_value, 2)
+
+
+def order_frequency(orders: Sequence[OrderRecord], observation_days: int) -> float:
+    """由历史订单推算点单频率（单/天）。
+
+    这是排程的前提 —— 没有它就估不出「券过期前你还会点几单」。
+    观察窗口由调用方给出（本项目默认取近 90 天）。
+    """
+    if observation_days <= 0:
+        return 0.0
+    return len(orders) / observation_days
+
+
+def plan_redemption(
+    coupons: list[CouponStock],
+    natural_spend: float,
+    frequency: float,
+    today: Optional[date] = None,
+    default_window_days: int = 30,
+) -> RedemptionPlan:
+    """在有限的点单机会里，安排该用哪几张券。
+
+    模型（简化过的 —— 三个假设都写在这里，不藏在代码里）
+
+    1. 券全部过期前，你还会点 ``K = floor(窗口天数 × 点单频率)`` 单
+    2. 每单最多用 1 张券
+    3. **用券不改变你的点单次数**，只改变每单用什么券
+
+    在这个模型下，最优策略就是「按净价值从高到低取前 K 张」：
+    各次机会等价、每张券只消耗一次机会，因此贪心即最优，无需复杂调度。
+
+    由此得到本函数最关键的结论：**可实现的券，未必用得上。**
+    你可能有 5 张可用券，但只剩 2 次点单机会 —— 另外 3 张注定浪费。
+
+    「纸面富贵」（净价值 ≤ 0）不参与排程 —— 那些券本就建议放弃。
+    """
+    verdicts = [classify_coupon(c, natural_spend, today) for c in coupons]
+
+    expired: list[CouponVerdict] = []
+    unjudgeable: list[CouponVerdict] = []
+    usable: list[CouponVerdict] = []
+
+    for verdict in verdicts:
+        if verdict.days_left is not None and verdict.days_left < 0:
+            expired.append(verdict)
+        elif verdict.category == CATEGORY_UNKNOWN:
+            unjudgeable.append(verdict)
+        elif verdict.is_realizable:
+            usable.append(verdict)
+
+    window_days = 0
+    if usable:
+        window_days = max(
+            v.days_left if v.days_left is not None else default_window_days
+            for v in usable
+        )
+
+    opportunities = 0
+    if usable and window_days > 0 and frequency > 0:
+        opportunities = max(1, int(window_days * frequency))
+
+    # 净价值从高到低；价值相同时，先安排更早过期的
+    usable.sort(key=lambda v: (-v.net_value, v.days_left or 9999))
+
+    scheduled = [
+        ScheduledCoupon(slot=index, verdict=verdict)
+        for index, verdict in enumerate(usable[:opportunities], start=1)
+    ]
+
+    return RedemptionPlan(
+        window_days=window_days,
+        frequency=frequency,
+        opportunities=opportunities,
+        scheduled=scheduled,
+        missed=usable[opportunities:],
+        unjudgeable=unjudgeable,
+        expired=expired,
+    )
+
+
+def _schedule_conclusion(plan: RedemptionPlan) -> str:
+    """生成排程结论 —— 机会不够时点明注定浪费多少。"""
+    if plan.missed_value > 0:
+        return (
+            f"券包可实现 ¥{plan.realizable_total}，但机会只够用掉 "
+            f"¥{plan.captured} —— 剩下 ¥{plan.missed_value} 注定随券过期浪费。"
+        )
+    if plan.captured > 0:
+        return f"机会够用：可实现的 ¥{plan.captured} 都能安排上。"
+    return "没有可安排的券。"
+
+
+def render_schedule(plan: RedemptionPlan) -> str:
+    """把用券排程渲染成面向用户的文本。"""
+    lines: list[str] = [_RULE, "用券排程", _RULE, ""]
+
+    if not plan.scheduled and plan.opportunities <= 0:
+        lines.append("  无法排程：缺少点单频率（没有可用的历史订单）。")
+        lines.append("")
+        lines += [_RULE, "先积累几单历史，才能推算你还会点几次。"]
+        return "\n".join(lines).rstrip()
+
+    lines.append(
+        f"  窗口 {plan.window_days} 天（券全部过期前）"
+        f" · 点单频率 {round(plan.frequency, 3)} 单/天"
+    )
+    lines.append(
+        f"  → 这期间你大概只会点 {plan.opportunities} 单，"
+        f"最多用掉 {plan.opportunities} 张券"
+    )
+    lines.append("")
+
+    if plan.scheduled:
+        lines.append("  建议安排")
+        for step in plan.scheduled:
+            lines.append(
+                f"    第 {step.slot} 单 → {step.verdict.name}"
+                f"    净赚 {step.verdict.net_value} 元"
+            )
+        lines.append("")
+
+    if plan.missed:
+        lines.append(
+            f"  排不上（{len(plan.missed)} 张 · 可实现 ¥{plan.missed_value}）"
+        )
+        for verdict in plan.missed:
+            lines.append(
+                f"    · {verdict.name}    净价值 {verdict.net_value} 元"
+                f"    {verdict.expiry_text()}"
+            )
+        lines.append("")
+
+    if plan.expired:
+        lines.append(f"  已过期（{len(plan.expired)} 张）")
+        for verdict in plan.expired:
+            lines.append(f"    · {verdict.name}")
+        lines.append("")
+
+    if plan.unjudgeable:
+        lines.append(f"  无法判断（{len(plan.unjudgeable)} 张）")
+        for verdict in plan.unjudgeable:
+            lines.append(f"    · {verdict.name}    菜单中无对应商品，未估算")
+        lines.append("")
+
+    lines += [_RULE, _schedule_conclusion(plan)]
+    return "\n".join(lines).rstrip()
+
+
 __all__ = [
     "CATEGORY_DIRECT",
     "CATEGORY_LABELS",
@@ -368,7 +567,12 @@ __all__ = [
     "CATEGORY_STRETCH",
     "CATEGORY_UNKNOWN",
     "CouponVerdict",
+    "RedemptionPlan",
+    "ScheduledCoupon",
     "audit_coupon_portfolio",
     "classify_coupon",
+    "order_frequency",
+    "plan_redemption",
     "render_portfolio",
+    "render_schedule",
 ]

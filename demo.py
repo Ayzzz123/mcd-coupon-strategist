@@ -35,7 +35,13 @@ from mcd_adapter import (  # noqa: E402
     parse_orders,
     parse_price_response,
 )
-from planner import audit_coupon_portfolio, render_portfolio  # noqa: E402
+from planner import (  # noqa: E402
+    audit_coupon_portfolio,
+    order_frequency,
+    plan_redemption,
+    render_portfolio,
+    render_schedule,
+)
 from saver import (  # noqa: E402
     Plan,
     PricedPlan,
@@ -59,6 +65,9 @@ CODE_FRIES = "4810"           # 薯条           14.5
 CODE_COLA = "9900008751"      # 可乐            9.5
 
 BUDGET = 40.0
+
+# 消费画像的观察窗口：既用于圈定统计区间，也用于推算点单频率
+OBSERVATION_DAYS = 90
 
 
 def load(name: str) -> dict:
@@ -186,7 +195,7 @@ def chain_b() -> None:
     stock = parse_coupon_stock(COUPONS, menu_prices=menu_prices)
 
     # 只统计近 90 天
-    since = FIXTURE_TODAY - timedelta(days=90)
+    since = FIXTURE_TODAY - timedelta(days=OBSERVATION_DAYS)
     recent = [o for o in orders if o.order_time >= since]
 
     print(
@@ -207,6 +216,17 @@ def chain_b() -> None:
         today=FIXTURE_TODAY,
     )
     print(render_portfolio(portfolio))
+    print()
+
+    # 用券排程：可实现的券，未必用得上 —— 券过期前你只剩几次点单机会。
+    # 频率由近 90 天的历史订单推算，与统计窗口保持一致。
+    schedule = plan_redemption(
+        stock,
+        natural_spend=report["profile"]["avg_per_order"],
+        frequency=order_frequency(recent, OBSERVATION_DAYS),
+        today=FIXTURE_TODAY,
+    )
+    print(render_schedule(schedule))
     print()
 
 

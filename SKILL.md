@@ -52,7 +52,7 @@ MCP 原始响应**必须先经适配层转换**，再进入业务逻辑。动手
 | `src/mcd_adapter.py` | 响应 → 领域对象；**全员唯一的「分→元」换算点** | `cents_to_yuan` `parse_menu` `parse_coupons` `parse_orders` `coupon_value_and_cost` `build_menu_price_table` |
 | `src/saver.py` | 链路 A：枚举、排序、陷阱检测、渲染 | `build_base_plans` `attach_coupons` `build_filler_plans` `rank` `within_budget` `detect_filler_trap` `recommend` `render` |
 | `src/auditor.py` | 链路 B：沉默成本、消费画像、报告渲染 | `coupon_silent_cost` `consumption_profile` `audit_report` `render_audit` |
-| `src/planner.py` | 链路 B：券包体检 —— 每张券的净价值与「哪些别用」 | `classify_coupon` `audit_coupon_portfolio` `render_portfolio` |
+| `src/planner.py` | 链路 B：券包体检（净价值）+ 用券排程（机会分配） | `classify_coupon` `audit_coupon_portfolio` `render_portfolio` `order_frequency` `plan_redemption` `render_schedule` |
 
 **工具的完整调用契约（实测必传参数、字段名、单位方向）见 [`MCP_INTEGRATION.md`](./MCP_INTEGRATION.md) 第 2.3 节** —— 动手前先查那张表，不要凭记忆传参。
 
@@ -218,6 +218,34 @@ MCP 原始响应**必须先经适配层转换**，再进入业务逻辑。动手
    因为买一送一根本没有门槛。
 2. **把假设写进输出** —— 客单价只是「自然消费基准」的保守近似，
    不是精确值。这个前提必须让用户看见，不能藏在代码里。
+
+### 第六步：用券排程
+
+券包体检算出的「可实现 ¥X」有个隐含前提：这些券你**都有机会用掉**。
+但券会过期，而你点单的次数有限。本步补上这个约束。
+
+先推算机会数：
+
+```
+窗口天数 = 未过期可用券里最晚的到期天数
+点单频率 = 近 90 天订单数 / 90
+机会数 K = max(1, floor(窗口天数 × 点单频率))
+```
+
+`order_frequency()` 负责频率、`plan_redemption()` 负责分配。
+**模型下最优策略就是按净价值取前 K 张**（各次机会等价、每张券只消耗一次机会，
+贪心即最优），不需要复杂调度 —— 也不要声称自己在做「最优调度」。
+
+产出的关键结论是**「可实现的券，未必用得上」**：
+
+```
+券包可实现 ¥10.0，但机会只够用掉 ¥5.0 —— 剩下 ¥5.0 注定随券过期浪费。
+```
+
+三个假设必须随输出交代清楚：① 你在窗口内本来就会点 K 单；
+② 每单最多用 1 张券；③ 用券不改变你的点单次数。
+
+「纸面富贵」（净价值 ≤ 0）不参与排程 —— 那些券本就在劝退之列。
 
 ---
 

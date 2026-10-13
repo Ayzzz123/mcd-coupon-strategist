@@ -324,6 +324,57 @@ def parse_orders(order_response: dict) -> list[OrderRecord]:
     return records
 
 
+def coupon_value_and_cost(
+    coupon_title: str,
+    menu_prices: dict,
+) -> tuple[float, float]:
+    """从券面文本推算「券面价值」与「触发所需消费额」，单位均为元。
+
+    ========== ==================== =============== ==================
+    券型        券面示例               券面价值         触发所需消费额
+    ========== ==================== =============== ==================
+    满减        满50减12               12（减免额）      50（门槛）
+    买一送一     中薯条买一送一           商品单价          商品单价（买一件）
+    固定价      9.9元中杯冰美式          原价 − 9.9      原价
+    ========== ==================== =============== ==================
+
+    「触发所需消费额」是净价值判定的基础 —— **用任何一张券都至少要花这么多钱**。
+    没有它就无法回答「为了省这 12 元，我要多花多少」。
+
+    无法与菜单对应上时返回 ``(0.0, 0.0)``，**绝不估算**：
+    宁可少报价值，也不编造一个看似合理的数字。
+    """
+    title = coupon_title.strip()
+
+    # 形态 1：满减券 —— 门槛与减免额都写在券面上
+    m_threshold = _THRESHOLD_RE.search(title)
+    if m_threshold:
+        m_discount = _DISCOUNT_RE.search(title)
+        threshold = float(m_threshold.group(1))
+        discount = float(m_discount.group(1)) if m_discount else 0.0
+        return discount, threshold
+
+    # 形态 2：买一送一 —— 价值等于商品单价，代价是买一件
+    if "买一送一" in title or "买1送1" in title:
+        target = title.replace("买一送一", "").replace("买1送1", "").strip()
+        price = _lookup_price(target, menu_prices)
+        if price is not None:
+            return round(price, 2), round(price, 2)
+        return 0.0, 0.0
+
+    # 形态 3：固定价券「9.9元xxx」—— 价值是原价与固定价之差
+    m_fixed = _FIXED_PRICE_RE.search(title)
+    if m_fixed:
+        fixed = float(m_fixed.group(1))
+        target = _FIXED_PRICE_RE.sub("", title).strip()
+        price = _lookup_price(target, menu_prices)
+        if price is not None:
+            return max(round(price - fixed, 2), 0.0), round(price, 2)
+        return 0.0, 0.0
+
+    return 0.0, 0.0
+
+
 def coupon_real_value(
     coupon_title: str,
     menu_prices: dict,
@@ -331,57 +382,15 @@ def coupon_real_value(
 ) -> float:
     """从券面文本推算券的**真实价值**（用这张券能省下多少元）。
 
-    麦当劳券主要有三种形态，价值算法各不相同：
-
-    1. **满减券**「满50减12」
-       → value = 12（直接减免额）
-
-    2. **买一送一**「中薯条买一送一」
-       → value = 该商品单价（等于白得一份）
-       商品名从标题中剥离，去菜单里查价。
-
-    3. **固定价券**「9.9元中杯冰美式」
-       → value = 商品原价 - 9.9
-       原价同样从菜单里查。
-
-    参数
-    ----
-    coupon_title : 券面标题
-    menu_prices  : {商品名关键词: 单价(元)} —— 由菜单数据构建
-    fallback     : 无法推算时返回的值。**默认 0，即不估算、不编造。**
+    算法细节见 `coupon_value_and_cost()`；本函数只取其中的价值部分，
+    供不需要关心触发成本的调用方使用。
 
     设计原则：宁可少报价值，也不编造一个看似合理的数字。
-    一旦券面无法与菜单对应上，就返回 0 并在报告中如实标注「价值未知」。
+    一旦券面无法与菜单对应上，就返回 `fallback`（默认 0），
+    并在报告中如实标注「价值未知」。
     """
-
-    title = coupon_title.strip()
-
-    # --- 形态 1：满减券 ---
-    if _THRESHOLD_RE.search(title):
-        m = _DISCOUNT_RE.search(title)
-        if m:
-            return float(m.group(1))
-
-    # --- 形态 2：买一送一 ---
-    if "买一送一" in title or "买1送1" in title:
-        target = title.replace("买一送一", "").replace("买1送1", "").strip()
-        price = _lookup_price(target, menu_prices)
-        if price is not None:
-            return round(price, 2)
-        return fallback
-
-    # --- 形态 3：固定价券「9.9元xxx」---
-    m_fixed = _FIXED_PRICE_RE.search(title)
-    if m_fixed:
-        fixed = float(m_fixed.group(1))
-        target = _FIXED_PRICE_RE.sub("", title).strip()
-        price = _lookup_price(target, menu_prices)
-        if price is not None:
-            value = round(price - fixed, 2)
-            return max(value, 0.0)  # 不该为负
-        return fallback
-
-    return fallback
+    value, _required = coupon_value_and_cost(coupon_title, menu_prices)
+    return value if value > 0 else fallback
 
 
 def _lookup_price(name: str, menu_prices: dict) -> Optional[float]:
@@ -431,7 +440,7 @@ def parse_coupon_stock(
     for raw in data:
         title = str(raw.get("title") or raw.get("name") or "")
 
-        value = coupon_real_value(title, menu_prices)
+        value, required = coupon_value_and_cost(title, menu_prices)
 
         # 门槛只对满减券有意义
         threshold = 0.0
@@ -453,6 +462,7 @@ def parse_coupon_stock(
                 value=value,
                 expire_date=expire,
                 threshold=threshold,
+                required_spend=required,
             )
         )
 
@@ -494,5 +504,6 @@ __all__ = [
     "parse_orders",
     "parse_coupon_stock",
     "build_menu_price_table",
+    "coupon_value_and_cost",
     "coupon_real_value",
 ]

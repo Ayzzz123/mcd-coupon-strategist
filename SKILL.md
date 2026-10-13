@@ -1,6 +1,6 @@
 ---
 name: mcd-coupon-strategist
-description: 麦麦省钱助手。基于麦当劳中国 MCP 的实时菜单、门店优惠券与计价能力，计算当前门店下最省钱的点餐方案（附省钱归因与凑单陷阱提示），并审计历史订单与券存量、量化即将过期券的「沉默成本」。当用户提到「麦当劳怎么点最便宜」「麦麦省钱」「帮我算一下这单划不划算」「用哪张券合适」「预算多少能吃什么」「我最近在麦当劳花了多少」「有没有券快过期了」时使用本 Skill。
+description: 麦麦省钱助手。基于麦当劳中国 MCP 的实时菜单、门店优惠券与计价能力，计算当前门店下最省钱的点餐方案（附省钱归因与凑单陷阱提示），并审计历史订单与券存量、量化即将过期券的「沉默成本」、对券包做净价值体检（哪些券该用、哪些别用）。当用户提到「麦当劳怎么点最便宜」「麦麦省钱」「帮我算一下这单划不划算」「用哪张券合适」「预算多少能吃什么」「我最近在麦当劳花了多少」「有没有券快过期了」「这些券该怎么用」时使用本 Skill。
 agent_created: true
 ---
 
@@ -40,6 +40,8 @@ agent_created: true
 5. **退款不算消费。** 历史订单中的「整单退款」必须过滤，否则月度支出虚高。
 6. **不确定就说不确定。** 餐品在当前门店缺货或价格缺失时如实说明，不要用其他门店数据替代。
 7. **不构成营养或医疗建议。** 调用 `list-nutrition-foods` 时，仅作为参考信息呈现。
+8. **券面价值 ≠ 真实价值。** 给用券建议时必须扣掉「为用它而额外多花的钱」；
+   净价值为负的券要**明确劝退**，而不是笼统地说「你有券可以用」。
 
 ## 配套资源
 
@@ -47,9 +49,10 @@ MCP 原始响应**必须先经适配层转换**，再进入业务逻辑。动手
 
 | 文件 | 作用 | 关键入口 |
 |---|---|---|
-| `src/mcd_adapter.py` | 响应 → 领域对象；**全员唯一的「分→元」换算点** | `cents_to_yuan` `parse_menu` `parse_coupons` `parse_orders` `coupon_real_value` `build_menu_price_table` |
+| `src/mcd_adapter.py` | 响应 → 领域对象；**全员唯一的「分→元」换算点** | `cents_to_yuan` `parse_menu` `parse_coupons` `parse_orders` `coupon_value_and_cost` `build_menu_price_table` |
 | `src/saver.py` | 链路 A：枚举、排序、陷阱检测、渲染 | `build_base_plans` `attach_coupons` `build_filler_plans` `rank` `within_budget` `detect_filler_trap` `recommend` `render` |
 | `src/auditor.py` | 链路 B：沉默成本、消费画像、报告渲染 | `coupon_silent_cost` `consumption_profile` `audit_report` `render_audit` |
+| `src/planner.py` | 链路 B：券包体检 —— 每张券的净价值与「哪些别用」 | `classify_coupon` `audit_coupon_portfolio` `render_portfolio` |
 
 **工具的完整调用契约（实测必传参数、字段名、单位方向）见 [`MCP_INTEGRATION.md`](./MCP_INTEGRATION.md) 第 2.3 节** —— 动手前先查那张表，不要凭记忆传参。
 
@@ -183,6 +186,38 @@ MCP 原始响应**必须先经适配层转换**，再进入业务逻辑。动手
 先给结论，再给明细。结论必须是**一个可立即执行的行动**：
 
 > 本月最该做的事：先把 33.1 元的券用掉，这笔钱不用就是纯损失。
+
+### 第五步：券包体检
+
+沉默成本回答「有多少钱在流失」；本步继续回答**「这笔钱该怎么救」**。
+
+核心公式（对所有券型统一成立）：
+
+```
+净价值 = 券面价值 − max(0, 触发所需消费 − 自然消费基准)
+```
+
+- **触发所需消费**：`mcd_adapter.coupon_value_and_cost()` 给出。
+  满减券取门槛、买一送一取商品单价、固定价券取原价。
+- **自然消费基准**：历史订单的客单价（`consumption_profile` 的 `avg_per_order`）。
+
+按净价值把券分成四类：
+
+| 类别 | 判定 | 动作 |
+|---|---|---|
+| 顺手可用 | 额外支出 = 0 | 直接给下单建议 |
+| 努一把 | 净价值 > 0 | 提示「需额外消费 X 元，净赚 Y 元」 |
+| 纸面富贵 | 净价值 ≤ 0 | **明确劝退**，算出硬用会亏多少 |
+| 无法判断 | 券面价值 = 0 | 如实标注，不估算 |
+
+调用 `planner.audit_coupon_portfolio()` 与 `planner.render_portfolio()`。
+
+两个必须遵守的细节：
+
+1. **措辞保持券型无关** —— 说「需额外消费 X 元」，别说「可达门槛」，
+   因为买一送一根本没有门槛。
+2. **把假设写进输出** —— 客单价只是「自然消费基准」的保守近似，
+   不是精确值。这个前提必须让用户看见，不能藏在代码里。
 
 ---
 

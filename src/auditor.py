@@ -40,13 +40,14 @@ from typing import Optional
 
 @dataclass
 class CouponStock:
-    """一张券的库存状态（用于沉默成本计算）。"""
+    """一张券的库存状态（用于沉默成本计算与净价值判定）。"""
 
     coupon_id: str
     name: str
     value: float  # 券面价值（元）—— 即用券可省下的金额
     expire_date: Optional[date] = None  # 有效期截止日
-    threshold: float = 0.0  # 使用门槛（元）
+    threshold: float = 0.0  # 满减门槛（元），仅满减券有意义
+    required_spend: float = 0.0  # 触发这张券至少需要消费多少（元）
 
     def days_left(self, today: Optional[date] = None) -> Optional[int]:
         """距过期还有几天。无有效期则返回 None。"""

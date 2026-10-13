@@ -35,6 +35,7 @@ from mcd_adapter import (  # noqa: E402
     parse_orders,
     parse_price_response,
 )
+from planner import audit_coupon_portfolio, render_portfolio  # noqa: E402
 from saver import (  # noqa: E402
     Plan,
     PricedPlan,
@@ -196,6 +197,16 @@ def chain_b() -> None:
 
     report = audit_report(recent, stock, months=3, today=FIXTURE_TODAY)
     print(render_audit(report))
+    print()
+
+    # 券包体检：在「告诉你正在白扔钱」之上再走一步 —— 这笔钱该怎么不白扔。
+    # 消费基准用历史订单的客单价，这是一个保守近似，已在报告中标注。
+    portfolio = audit_coupon_portfolio(
+        stock,
+        natural_spend=report["profile"]["avg_per_order"],
+        today=FIXTURE_TODAY,
+    )
+    print(render_portfolio(portfolio))
     print()
 
 

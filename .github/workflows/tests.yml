@@ -48,6 +48,7 @@ jobs:
         run: |
           python src/test_saver.py
           python src/test_auditor.py
+          python src/test_planner.py
           python src/test_adapter.py
           python src/test_order_adapter.py
 

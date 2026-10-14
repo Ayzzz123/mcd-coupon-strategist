@@ -123,7 +123,54 @@ def main() -> None:
     print()
 
     print("=" * 60)
-    print("5. 空订单处理")
+    print("5. 口径分离（0 元订单与部分退款）")
+    print("=" * 60)
+
+    # 真实数据里就有这两类：0 元订单（券核销）与「部分退款」
+    mixed = [
+        OrderRecord(TODAY - timedelta(days=1), 36.5, ["猪柳蛋麦满分组合"], "到店",
+                    "部分退款"),
+        OrderRecord(TODAY - timedelta(days=2), 23.8, ["麦辣鸡翅"], "到店",
+                    "订单已完成"),
+        OrderRecord(TODAY - timedelta(days=3), 0.0, ["免费脆薯饼"], "到店",
+                    "订单已完成"),
+        OrderRecord(TODAY - timedelta(days=4), 0.0, ["免费小薯条"], "到店",
+                    "订单已完成"),
+    ]
+    p2 = consumption_profile(mixed, months=1)
+
+    print(f"   订单数      : {p2['order_count']} 单"
+          f"（消费性 {p2['spending_order_count']} / 0 元 {p2['free_order_count']}）")
+    print(f"   总支出      : {p2['total_spent']} 元")
+    print(f"   客单价      : {p2['avg_per_order']} 元  ← 消费口径（算钱用）")
+    print(f"   全部订单均值: {p2['avg_all_orders']} 元  ← 仅作对照")
+    print("   洞察：")
+    for ins in p2["insights"]:
+        print(f"     · {ins}")
+
+    assert OrderRecord(TODAY, 0.0).is_spending is False, "0 元订单不是消费"
+    assert OrderRecord(TODAY, 1.0).is_spending is True, "1 元订单也是消费"
+
+    assert p2["order_count"] == 4, "点单口径应包含 0 元订单"
+    assert p2["spending_order_count"] == 2, "消费口径只算有实际支出的订单"
+    assert p2["free_order_count"] == 2
+    assert p2["partial_refund_count"] == 1
+    assert p2["total_spent"] == 60.3, "0 元订单不影响总额"
+    assert abs(p2["avg_per_order"] - 30.15) < 0.02, \
+        f"客单价应为 60.3/2=30.15（不按 4 单摊薄），实际 {p2['avg_per_order']}"
+    assert abs(p2["avg_all_orders"] - 15.08) < 0.02, "对照口径按全部订单算"
+
+    # 关键：0 元单与部分退款都必须被如实交代，不能静默
+    assert any("0 元订单" in i for i in p2["insights"]), "应说明 0 元订单的口径"
+    refund_line = next(i for i in p2["insights"] if "部分退款" in i)
+    assert "不返回退款金额" in refund_line, \
+        "部分退款必须说明「接口没给金额」，而不是猜一个数出来"
+    assert "可能略偏高" in refund_line, "应给出方向性提示"
+    print("   [PASS] 两个口径分离，0 元单与部分退款都被如实交代（未猜金额）")
+    print()
+
+    print("=" * 60)
+    print("6. 空订单处理")
     print("=" * 60)
     empty = consumption_profile([])
     print(f"   {empty['insights'][0]}")
@@ -132,7 +179,7 @@ def main() -> None:
     print()
 
     print("=" * 60)
-    print("6. 完整审计报告渲染")
+    print("7. 完整审计报告渲染")
     print("=" * 60)
     report = audit_report(orders, coupons, months=1, today=TODAY)
     print(render_audit(report))

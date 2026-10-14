@@ -141,7 +141,10 @@ def main() -> None:
 
     total = sum(o.amount for o in orders)
     assert total == 24.8, f"过滤退款后总额应为 1 + 23.8 = 24.8，实际 {total}"
+    # orderStatus 必须原样带过来 —— 消费画像要靠它识别「部分退款」并如实提示
+    assert all(o.status for o in orders), "orderStatus 不应在适配层被丢掉"
     print(f"   [PASS] 退款单已过滤，总额 {total} 元（未包含退款的 15.5 元）")
+    print("           orderStatus 原样保留（供识别「部分退款」）")
     print()
 
     print("=" * 60)

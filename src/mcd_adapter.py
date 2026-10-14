@@ -290,6 +290,16 @@ def parse_orders(order_response: dict) -> list[OrderRecord]:
 
     同时会过滤掉「整单退款」的订单 —— 退款单不代表真实消费，
     计入总额会虚高。
+
+    退款与 0 元订单的边界（都**不猜**）
+    ----------------------------------
+
+    - **「部分退款」保留但标记**：这类订单有部分真实消费，不能整笔丢掉；
+      但响应里的 `realTotalAmount` 是退款前还是退款后的口径**无法确认**，
+      且响应**不提供退款金额字段**。所以本项目既不猜退款额、也不假装没这回事，
+      而是把笔数带进消费画像，由报告如实提示「支出可能略偏高」。
+    - **0 元订单保留**：多为券核销或积分兑换。是否算「消费」由消费画像
+      按口径决定（见 `auditor.OrderRecord.is_spending`），适配层只负责如实传递。
     """
     data = order_response.get("data") or {}
     raw_list = data.get("list") or []
@@ -326,6 +336,7 @@ def parse_orders(order_response: dict) -> list[OrderRecord]:
                 amount=amount,
                 items=items,
                 channel=channel,
+                status=status,
             )
         )
 

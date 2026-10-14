@@ -71,6 +71,20 @@ class OrderRecord:
     amount: float  # 实付金额（元）
     items: list[str] = field(default_factory=list)
     channel: str = ""  # 外送 / 到店
+    status: str = ""  # 原始 orderStatus，用于识别「部分退款」
+
+    @property
+    def is_spending(self) -> bool:
+        """是否是**真实消费**（金额大于 0）。
+
+        0 元订单（多为券核销或积分兑换）不算消费。它只在有券时才会出现，
+        拿它去估「不看券时你本来会花多少钱」是循环论证，还会把基准拉低 ——
+        而基准偏低会让所有券都显得更难用上。
+
+        但它**确实是一次点单**，所以推算点单频率时仍然计入。
+        这正是本项目区分「消费口径」与「点单口径」的原因。
+        """
+        return self.amount > 0
 
 
 # --------------------------------------------------------------------------
@@ -187,26 +201,47 @@ def consumption_profile(
 
     返回：
     {
-      "order_count": int,
+      "order_count": int,            # 点单口径：全部订单（含 0 元单）
+      "spending_order_count": int,   # 消费口径：有实际支出的订单
+      "free_order_count": int,       # 0 元订单（券核销 / 积分兑换）
+      "partial_refund_count": int,   # 部分退款订单（退款金额接口未提供）
       "total_spent": float,
-      "avg_per_order": float,
+      "avg_per_order": float,        # 客单价 = 总支出 / 消费性订单数
+      "avg_all_orders": float,       # 总支出 / 全部订单数（仅作对照）
       "daily_avg": float,
-      "channel_mix": {...},         # 外送/到店占比
-      "top_items": [...],           # 高频餐品
-      "insights": [str, ...],       # 可执行的省钱洞察
+      "channel_mix": {...},          # 外送/到店占比
+      "top_items": [...],            # 高频餐品
+      "insights": [str, ...],        # 可执行的省钱洞察
     }
+
+    两个口径必须分开，否则结论会系统性失真：
+
+    - **消费口径**（`avg_per_order`）—— 算钱、当「自然消费基准」。
+      0 元订单不参与：它只在有券时才会出现，拿它当「不看券时会花多少」
+      是循环论证，还会把基准拉低，让所有券都显得更难用上。
+    - **点单口径**（`order_count`）—— 算机会。0 元订单也算一次点单，
+      所以推算「券过期前你还会点几单」时应当计入。
     """
 
     if not orders:
         return {
-            "order_count": 0, "total_spent": 0.0, "avg_per_order": 0.0,
+            "order_count": 0, "spending_order_count": 0, "free_order_count": 0,
+            "partial_refund_count": 0, "total_spent": 0.0,
+            "avg_per_order": 0.0, "avg_all_orders": 0.0,
             "daily_avg": 0.0, "channel_mix": {}, "top_items": [],
             "insights": ["还没有历史订单，多下几单后就能给你做消费分析了。"],
         }
 
     total = round(sum(o.amount for o in orders), 2)
     count = len(orders)
-    avg = round(total / count, 2) if count else 0.0
+
+    # 消费口径与点单口径分离
+    spending_count = sum(1 for o in orders if o.is_spending)
+    free_count = count - spending_count
+    partial_refund_count = sum(1 for o in orders if "部分退款" in o.status)
+
+    avg = round(total / spending_count, 2) if spending_count else 0.0
+    avg_all = round(total / count, 2) if count else 0.0
 
     # 渠道分布
     channel_count: dict[str, int] = {}
@@ -225,8 +260,28 @@ def consumption_profile(
 
     insights: list[str] = []
 
-    # 洞察 1：月度总支出
-    insights.append(f"近 {months} 个月你在麦当劳共消费 {total} 元，平均每单 {avg} 元。")
+    # 洞察 1：月度总支出 + 两个口径的说明
+    if free_count:
+        insights.append(
+            f"近 {months} 个月你在麦当劳共消费 {total} 元，"
+            f"其中 {spending_count} 笔有实际支出，平均每单 {avg} 元。"
+        )
+        insights.append(
+            f"另有 {free_count} 笔 0 元订单（多为券核销或积分兑换）—— "
+            f"不计入客单价，但算作一次点单机会。"
+        )
+    else:
+        insights.append(
+            f"近 {months} 个月你在麦当劳共消费 {total} 元，"
+            f"共 {count} 单，平均每单 {avg} 元。"
+        )
+
+    # 部分退款：接口不给退款金额，所以只能如实说明不确定，不能假装没这回事
+    if partial_refund_count:
+        insights.append(
+            f"还有 {partial_refund_count} 笔「部分退款」订单 —— 接口不返回退款金额，"
+            f"无法确认 realTotalAmount 是退款前还是退款后的口径，上面的支出可能略偏高。"
+        )
 
     # 洞察 2：日均
     if daily >= 20:
@@ -259,8 +314,12 @@ def consumption_profile(
 
     return {
         "order_count": count,
+        "spending_order_count": spending_count,
+        "free_order_count": free_count,
+        "partial_refund_count": partial_refund_count,
         "total_spent": total,
         "avg_per_order": avg,
+        "avg_all_orders": avg_all,
         "daily_avg": daily,
         "channel_mix": channel_count,
         "top_items": [{"name": n, "times": t} for n, t in top_items],
@@ -329,9 +388,22 @@ def render_audit(report: dict) -> str:
     # 第二部分：消费画像
     lines.append("【二】消费习惯")
     if p.get("order_count"):
-        lines.append(f"  订单数：{p['order_count']} 单")
+        free = p.get("free_order_count", 0)
+        spending = p.get("spending_order_count", p["order_count"])
+
+        count_txt = f"  订单数：{p['order_count']} 单"
+        if free:
+            count_txt += f"（其中 {free} 笔 0 元）"
+        lines.append(count_txt)
+
         lines.append(f"  总支出：{p['total_spent']} 元")
-        lines.append(f"  客单价：{p['avg_per_order']} 元")
+
+        # 客单价按「有支出的订单」算：0 元订单不是消费，计入会把基准拉低
+        avg_txt = f"  客单价：{p['avg_per_order']} 元"
+        if free:
+            avg_txt += f"（按 {spending} 笔有支出的订单计算）"
+        lines.append(avg_txt)
+
         lines.append("")
         lines.append("  洞察：")
         for ins in p.get("insights", []):

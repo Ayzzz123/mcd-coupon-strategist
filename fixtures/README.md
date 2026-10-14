@@ -15,6 +15,7 @@
 | `points_account.json` | `query-my-account` | **逐字保留**。积分账户（可用 / 累计 / 已用 / **已过期 17**）。⚠️ 积分字段是字符串且可为小数 |
 | `points_products.json` | `mall-points-products` | **节选**：保留全部语义字段，省略图片与 shopId。⚠️ 24 个商品里 **15 个的 `downTime` 已过、`status` 却仍报「上架」** |
 | `campaign_calendar.md` | `campaign-calendar` | ⚠️ **Markdown 文本**，直接存 `.md` 而不套 JSON（原文大量换行，转义反而易错）。**只保留「日期分节 + 活动标题」**，省略了「活动内容介绍」与图片 —— 那是营销文案，解析不使用，且里面含无法核实的价格 |
+| `my_coupons.md` | `query-my-coupons` | ⚠️ **Markdown 文本**（同样是 `.md` 直存）。**省略图片行**，其余逐字。⚠️ 该接口返回的是**卡包里拥有的全部券**（不做门店校验）—— 真实数据 9 张，而门店券接口只给 2 张；用它算沉默成本才不漏报。**「用券价格」是接口直给的触发成本**，早餐券的有效期里还带**时段与星期限制**（如仅 10月15日 05:00-10:29） |
 
 ## 采集信息
 
@@ -26,6 +27,7 @@
 | 麦麦省券 | 2026-10-13 22:18 | `available_coupons.json` |
 | 积分 | 2026-10-14 19:22 | `points_account.json` / `points_products.json` |
 | 活动日历 | 2026-10-14 19:40 | `campaign_calendar.md` |
+| 账户券 | 2026-10-14 19:47 | `my_coupons.md` |
 
 - **门店**：麦当劳南京东城汇餐厅 `storeCode=1990622`（仅主链路）
 - **下单方式**：到店自取 `orderType=1 beType=1`

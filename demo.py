@@ -37,6 +37,7 @@ from mcd_adapter import (  # noqa: E402
     parse_combo_from_detail,
     parse_coupon_probes,
     parse_coupon_stock,
+    parse_my_coupons,
     parse_menu,
     parse_orders,
     parse_points_account,
@@ -112,6 +113,8 @@ POINTS_ACCOUNT = load("points_account.json")
 POINTS_PRODUCTS = load("points_products.json")
 # 营销活动日历（与积分同批采集）。该工具返回 Markdown 文本，不是 JSON
 CAMPAIGN_CALENDAR = load_text("campaign_calendar.md")
+# 账户券（卡包里拥有的全部券）。同样是 Markdown 文本
+MY_COUPONS = load_text("my_coupons.md")
 
 
 # --------------------------------------------------------------------------
@@ -219,24 +222,43 @@ def chain_b() -> None:
     refunded = len(raw) - len(orders)
 
     menu_prices = build_menu_price_table(MENU)
-    # 券价值优先用「带券计价」实测，测不到再退回菜单反查
-    stock = parse_coupon_stock(
+
+    # ── 券源的选择（两个接口分工不同，不能互换）──────────────────────
+    #   query-store-coupons —— 当前门店**经过规则校验**可用的券（有 couponId）
+    #   query-my-coupons    —— 卡包里**拥有**的全部券（不做门店校验，也没有 couponId）
+    #
+    # 沉默成本必须基于**账户券**：用门店券会漏报 —— 账户里有、但当前门店
+    # 不可用的券同样会过期。真实数据下两者差 2 张 vs 9 张。
+    store_stock = parse_coupon_stock(
         COUPONS,
         menu_prices=menu_prices,
         probes=parse_coupon_probes(COUPON_PROBES),
     )
+    # 账户券没有 couponId，自己测不了价值；但同一张券也出现在门店券里，
+    # 所以按券名把那边实测到的价值搬过来，避免把已知的价值退化成「未知」。
+    known = {c.name: c.value for c in store_stock if c.value > 0}
+    stock = parse_my_coupons(MY_COUPONS, menu_prices=menu_prices,
+                             known_values=known)
+
+    # 券是 10-14 采集的，所以「还剩几天」要按采集日算 ——
+    # 拿主链路的 10-12 去算，会把所有券的紧迫度都算轻两天。
+    today = CAMPAIGN_TODAY
 
     # 只统计近 90 天
-    since = FIXTURE_TODAY - timedelta(days=OBSERVATION_DAYS)
+    since = today - timedelta(days=OBSERVATION_DAYS)
     recent = [o for o in orders if o.order_time >= since]
 
     print(
         f"  历史订单 {len(raw)} 条 → 过滤「整单退款」{refunded} 条 "
         f"→ 近 90 天 {len(recent)} 条计入统计"
     )
+    print(
+        f"  券：当前门店可用 {len(store_stock)} 张，"
+        f"卡包里持有 {len(stock)} 张 —— 沉默成本按后者算"
+    )
     print()
 
-    report = audit_report(recent, stock, months=3, today=FIXTURE_TODAY)
+    report = audit_report(recent, stock, months=3, today=today)
     print(render_audit(report))
     print()
 
@@ -245,7 +267,7 @@ def chain_b() -> None:
     portfolio = audit_coupon_portfolio(
         stock,
         natural_spend=report["profile"]["avg_per_order"],
-        today=FIXTURE_TODAY,
+        today=today,
     )
     print(render_portfolio(portfolio))
     print()
@@ -256,7 +278,7 @@ def chain_b() -> None:
         stock,
         natural_spend=report["profile"]["avg_per_order"],
         frequency=order_frequency(recent, OBSERVATION_DAYS),
-        today=FIXTURE_TODAY,
+        today=today,
     )
     print(render_schedule(schedule))
     print()

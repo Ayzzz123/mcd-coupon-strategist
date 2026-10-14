@@ -19,6 +19,7 @@ from mcd_adapter import (  # noqa: E402
     coupon_real_value,
     parse_coupon_probes,
     parse_coupon_stock,
+    parse_my_coupons,
     parse_orders,
 )
 
@@ -273,6 +274,47 @@ def main() -> None:
     assert report["profile"]["order_count"] == 2
     assert report["profile"]["total_spent"] == 24.8
     print("[PASS] 消费审计报告基于真实数据生成成功")
+    print()
+
+    print("=" * 60)
+    print("7. 账户券解析（query-my-coupons，Markdown 文本）")
+    print("=" * 60)
+
+    # 数据源：2026-10-14 真实调用，逐字保留（省略图片行）。该接口返回 Markdown
+    fixture = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "..", "fixtures", "my_coupons.md")
+    with open(fixture, encoding="utf-8") as f:
+        my = parse_my_coupons(f.read(), menu_prices=REAL_MENU_PRICES)
+
+    assert len(my) == 9, f"应解析出 9 张账户券，实际 {len(my)}"
+    by_name: dict = {}
+    for c in my:
+        by_name.setdefault(c.name, []).append(c)
+
+    # 同名但有效期不同的两张厚松饼券是**不同的券**，不能按名称去重
+    assert len(by_name["巧克力味厚松饼猪柳蛋套餐"]) == 2, \
+        "同名不同有效期的两张券都要保留"
+
+    # 触发成本来自接口直给的「用券价格」，比菜单反查更可靠
+    fries = by_name["中薯条买一送一"][0]
+    assert fries.required_spend == 13.5, \
+        f"用券价格 13.5 应作为触发成本，实际 {fries.required_spend}"
+    assert fries.value == 14.5, "菜单反查应给出买一送一的价值 14.5 元"
+    assert fries.day_window == "", "跨日券不应有单日时段窗口"
+
+    # 早餐券：菜单里没有对应商品 → 价值未知；但**时段限制必须解析出来** ——
+    # 一张只能明天早上 05:00-10:29 用的券，和一张还有 7 天的券完全不同
+    breakfast = by_name["大脆鸡扒堡早餐两件套"][0]
+    assert breakfast.value == 0.0, "菜单查不到的早餐券价值应为 0（如实未知）"
+    assert breakfast.day_window == "05:00-10:29", \
+        f"单日券的可用时段应解析出来，实际 {breakfast.day_window!r}"
+    assert breakfast.expire_date == date(2026, 10, 15)
+    assert breakfast.channel_tags == "到店专用"
+
+    assert all("mcd-portal" not in (c.channel_tags or "") for c in my), \
+        "图片链接不应混进解析结果"
+    print("   [PASS] 9 张券全部解析；同名不同期的券各自保留")
+    print("   [PASS] 用券价格优先作为触发成本；单日券的时段限制被解析出来")
     print()
     print("=" * 60)
     print("全部订单/券解析测试通过")

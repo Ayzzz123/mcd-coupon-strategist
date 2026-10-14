@@ -868,6 +868,143 @@ def parse_campaign_calendar(response: Any) -> list[CampaignDay]:
     return days
 
 
+# --------------------------------------------------------------------------
+# 账户券（query-my-coupons）
+# --------------------------------------------------------------------------
+
+# 「## 中薯条买一送一」
+_MY_NAME_RE = re.compile(r"^##\s+(.+?)\s*$")
+# 「- **优惠**: ¥13.5 (用券价格)」
+_MY_FIELD_RE = re.compile(r"^-\s+\*\*(.+?)\*\*:\s*(.*?)\s*$")
+# 「¥13.5」—— 兼容全角 ¥ 与 ￥
+_MY_PRICE_RE = re.compile(r"[¥￥]\s*(\d+(?:\.\d+)?)")
+# 「2026-10-12 10:30-2026-10-16 23:59」—— 有效期起止（含时间）
+_MY_RANGE_RE = re.compile(
+    r"(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})"
+)
+
+
+def parse_my_coupons(
+    response: Any,
+    menu_prices: Optional[dict] = None,
+    known_values: Optional[dict] = None,
+) -> list[CouponStock]:
+    """解析 `query-my-coupons` 的响应（**Markdown 文本，不是 JSON**）。
+
+    与 `query-store-coupons` 的分工 —— **这是接口自己声明的**：
+
+    - `query-store-coupons`：当前门店 / 当前订单**经过规则校验**可用的券
+    - `query-my-coupons`：用户卡包里**拥有**的券，**不做门店与渠道校验**，
+      文档原话是「因此不承诺可用于当前订单」
+
+    所以两者不能互换，各有各的用途：
+
+    - 算**券的沉默成本**要用账户券 —— 只有它包含全部持有的券。
+      用门店券会**漏报**：账户里有、但当前门店不可用的券同样会过期。
+    - 选**这一单用哪张**要用门店券 —— 只有它保证真的能用。
+
+    本函数只取结构化字段（标题 / 用券价格 / 有效期 / 标签），
+    图片与营销文案一律丢弃。**「用券价格」是接口直接给的**，
+    比反查菜单更可靠，因此优先作为「触发所需消费额」。
+
+    参数
+    ----
+    known_values : {券名: 已实测价值}，可选。该接口**不返回 `couponId`**，
+        所以这批券无法自己做带券计价实测；但同一张券可能也出现在门店券里
+        （那边有 ID、测得到）。调用方可以把门店券的实测结果按**券名**传进来，
+        避免把已知的价值退化成「未知」。**只认名字完全相同的券。**
+    """
+
+    text = _response_text(response)
+    blocks = _split_my_coupon_blocks(text)
+    prices = menu_prices or {}
+    known = known_values or {}
+    return [_build_account_coupon(b, prices, known) for b in blocks]
+
+
+def _split_my_coupon_blocks(text: str) -> list[dict]:
+    """把账户券的 Markdown 拆成「一张券一个 dict」。
+
+    只认两种行：`## 券名` 开新券，`- **字段**: 值` 填字段。
+    其余（图片、页眉、说明文字）一律忽略。
+    """
+    blocks: list[dict] = []
+    current: Optional[dict] = None
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+
+        m_name = _MY_NAME_RE.match(line)
+        if m_name:
+            current = {"名称": m_name.group(1).strip()}
+            blocks.append(current)
+            continue
+
+        m_field = _MY_FIELD_RE.match(line)
+        if m_field and current is not None:
+            current[m_field.group(1).strip()] = m_field.group(2).strip()
+
+    # 丢弃没有名称的空块
+    return [b for b in blocks if b.get("名称")]
+
+
+def _parse_validity(validity: str) -> tuple[Optional[date], str]:
+    """解析有效期原文，返回（截止日, 单日券的可用时段）。
+
+    有效期形如：
+
+        "2026-10-12 10:30-2026-10-16 23:59 周一、二、三、四、五 10:30-23:59"   ← 跨日
+        "2026-10-15 05:00-2026-10-15 10:29 周四 05:00-10:29"                  ← 单日
+
+    单日券的**时段限制很关键**（早餐券只有 05:00-10:29 能用），
+    所以单独取出返回；跨日券的时段没有意义，返回空串。
+    """
+    m = _MY_RANGE_RE.search(validity)
+    if m:
+        start_date, start_time, end_date, end_time = m.groups()
+        expire = _parse_datetime(end_date)
+        window = f"{start_time}-{end_time}" if start_date == end_date else ""
+        return expire, window
+
+    # 退回：只按日期取最后一个
+    dates = _DATE_RE.findall(validity)
+    return (_parse_datetime(dates[-1]) if dates else None), ""
+
+
+def _build_account_coupon(
+    block: dict,
+    menu_prices: dict,
+    known_values: dict,
+) -> CouponStock:
+    """把一张账户券的字段块转成 `CouponStock`。"""
+    name = block["名称"]
+
+    m_price = _MY_PRICE_RE.search(block.get("优惠", ""))
+    coupon_price = float(m_price.group(1)) if m_price else 0.0
+
+    validity = block.get("有效期", "")
+    expire, day_window = _parse_validity(validity)
+
+    # 价值优先级：已实测（同名券）> 菜单反查 > 0（如实标注「未知」）
+    reverse_value, fallback_required = coupon_value_and_cost(name, menu_prices)
+    value = float(known_values.get(name) or 0.0)
+    if value <= 0:
+        value = reverse_value
+
+    return CouponStock(
+        coupon_id="",  # 该接口不返回 couponId
+        name=name,
+        value=value,
+        expire_date=expire,
+        threshold=_threshold_of(name),
+        # 「用券价格」是接口直给的触发成本，优先于菜单反查的结果
+        required_spend=coupon_price or fallback_required,
+        validity_text=validity,
+        day_window=day_window,
+        channel_tags=block.get("标签", ""),
+    )
+
+
 __all__ = [
     "CENTS_PER_YUAN",
     "AvailableCoupon",
@@ -888,6 +1025,7 @@ __all__ = [
     "parse_points_account",
     "parse_points_products",
     "parse_campaign_calendar",
+    "parse_my_coupons",
     "build_menu_price_table",
     "coupon_value_and_cost",
     "coupon_real_value",

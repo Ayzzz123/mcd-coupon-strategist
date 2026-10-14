@@ -48,6 +48,10 @@ class CouponStock:
     expire_date: Optional[date] = None  # 有效期截止日
     threshold: float = 0.0  # 满减门槛（元），仅满减券有意义
     required_spend: float = 0.0  # 触发这张券至少需要消费多少（元）
+    # 以下三项来自 query-my-coupons（账户券），门店券接口不提供
+    validity_text: str = ""  # 有效期原文（含时段与星期限制）
+    day_window: str = ""  # 单日券的可用时段（如 "05:00-10:29"）；跨日券为空
+    channel_tags: str = ""  # 可用渠道标签原文（如「到店专用、外送专用」）
 
     def days_left(self, today: Optional[date] = None) -> Optional[int]:
         """距过期还有几天。无有效期则返回 None。"""
@@ -187,18 +191,28 @@ def coupon_silent_cost(
         if today_due:
             # 今天到期是最紧迫的信号，单独强调
             parts.append(
-                f"**{len(today_due)} 张今天到期（面值 {today_value} 元），"
-                f"今天不用就作废**"
+                f"{len(today_due)} 张今天到期（面值 {today_value} 元），"
+                f"今天不用就作废"
             )
 
         if upcoming:
-            days_min = min(c.days_left(today) for c in upcoming)
+            # 「N 天内」取窗口上限：9 张券散布在 1~7 天时，写「1 天内」会让人
+            # 误以为全部明天就没了，「7 天内」才是准确的紧迫度上界。
+            days_max = max(c.days_left(today) for c in upcoming)
             parts.append(
-                f"{len(upcoming)} 张将在 {days_min} 天内陆续过期"
+                f"{len(upcoming)} 张将在 {days_max} 天内陆续过期"
                 f"（面值 {upcoming_value} 元）"
             )
 
         total_at_risk = round(expired_value + today_value + upcoming_value, 2)
+
+        # 价值为 0 说明券面无法与菜单对应 —— 它们同样在过期，只是金额算不出来。
+        # 必须说出来，否则「面值 X 元」会被读成「全部损失只有 X 元」。
+        unknown = [c for c in at_risk if c.value <= 0]
+        if unknown:
+            parts.append(
+                f"另有 {len(unknown)} 张的券面价值无法从菜单推算，未计入面值"
+            )
 
         if len(parts) == 1:
             narrative = f"你有 {parts[0]}。"
@@ -220,6 +234,10 @@ def coupon_silent_cost(
                 "value": c.value,
                 "days_left": c.days_left(today),
                 "threshold": c.threshold,
+                # 账户券才有这两项（时段限制与渠道标签），门店券接口不提供。
+                # 早餐券常常只有当天早上两三个小时能用，这个限制必须让用户看见。
+                "day_window": c.day_window,
+                "channel_tags": c.channel_tags,
             }
             for c in at_risk
         ],
@@ -513,6 +531,21 @@ def render_audit(report: dict) -> str:
             else:
                 value_txt = "价值未知（菜单中无对应商品，未估算）"
             lines.append(f"    · {it['name']}  {value_txt}  {when}{th}")
+
+            # 时段与渠道限制只对**真的有限制**的券显示 ——
+            # 同时标着「到店专用、外送专用」的券其实是通用的，写了也没信息量。
+            # 而早餐券常常只有当天早上两三个小时能用，这个限制必须让用户看见。
+            limits: list[str] = []
+            if it.get("day_window"):
+                limits.append(f"仅 {it['day_window']} 可用")
+            tags = it.get("channel_tags") or ""
+            if tags and not ("到店" in tags and "外送" in tags):
+                limits.append(tags)
+            if limits:
+                lines.append(f"      {' · '.join(limits)}")
+
+        if len(at_risk) > 5:
+            lines.append(f"    …… 另有 {len(at_risk) - 5} 张（为控制篇幅未展开）")
     lines.append("")
 
     # 第二部分：消费画像
@@ -566,9 +599,23 @@ def render_audit(report: dict) -> str:
 
     # 汇总结论
     at_risk_value = c.get("at_risk_value", 0)
+    at_risk_items = c.get("at_risk_items") or []
+    unknown = sum(1 for it in at_risk_items if it.get("value", 0) <= 0)
     if at_risk_value > 0:
         lines.append(f"本月最该做的事：先把 {at_risk_value} 元的券用掉，")
         lines.append("这笔钱不用就是纯损失。")
+        if unknown:
+            # 价值未知的券同样在流失，只是金额算不出来 —— 不能让它们在
+            # 汇总里隐身，否则用户会以为「处理完 21.1 元就完事了」。
+            lines.append(
+                f"另外 {unknown} 张券同样要过期，但券面价值还没算出来 —— "
+                f"看清它们的时间和限制，别让它们悄悄走掉。"
+            )
+    elif unknown:
+        lines.append(
+            f"有 {unknown} 张券即将过期，但券面价值都还估算不出来 —— "
+            f"先看清它们的时间和限制。"
+        )
     else:
         lines.append("券管理得不错，没有即将浪费的券。")
 

@@ -1,0 +1,58 @@
+{
+  "_source": "麦当劳官方 MCP · query-meal-detail",
+  "_captured_at": "2026-10-14 19:08:57",
+  "_store": "1990622 麦当劳南京东城汇餐厅 · 到店自取 orderType=1 beType=1",
+  "_note": "真实响应的**节选**：保留 data.code / data.name 与每个 round 的 id/name/quantity，但每个 round 的 choices 只保留 isDefault=1 的那一项，并省略 modification（特调）与商品图片。解析只需要默认项（见 mcd_adapter.parse_combo_from_detail），字段与取值未改动。",
+  "_why": "套餐必须知道自己在装什么 —— 否则「这份方案是否满足需求」就只能靠编码硬编码。有了它，saver.Plan.covered_codes() 才能把套餐内含单品算进去，让「套餐」和「单点组合」在需求判断面前平等。",
+  "success": true,
+  "code": 200,
+  "message": "请求成功",
+  "data": {
+    "code": "9900005456",
+    "name": "麦辣鸡腿汉堡三件套",
+    "rounds": [
+      {
+        "id": 1,
+        "name": "麦辣鸡腿汉堡",
+        "quantity": 1,
+        "choices": [
+          {
+            "code": "1440",
+            "name": "麦辣鸡腿汉堡",
+            "quantity": 1,
+            "isDefault": 1,
+            "diffPrice": "+ ¥0"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "name": "选择套餐内小食",
+        "quantity": 1,
+        "choices": [
+          {
+            "code": "4810",
+            "name": "中薯条",
+            "quantity": 1,
+            "isDefault": 1,
+            "diffPrice": "+ ¥0"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "name": "选择套餐内饮料",
+        "quantity": 1,
+        "choices": [
+          {
+            "code": "3050",
+            "name": "可乐中杯",
+            "quantity": 1,
+            "isDefault": 1,
+            "diffPrice": "+ ¥0"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -16,8 +16,8 @@
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass
-from typing import Iterable, Optional
+from dataclasses import dataclass, field
+from typing import Callable, Iterable, Optional
 
 
 # --------------------------------------------------------------------------
@@ -35,11 +35,28 @@ class Item:
     qty: int = 1
     category: str = ""
     is_side: bool = False  # 是否为「凑单品」候选（小食、饮品等）
+    parts: list[Item] = field(default_factory=list)  # 套餐内含的单品
 
     @property
     def subtotal(self) -> float:
         """该餐品小计（单价 × 数量），保留两位小数。"""
         return round(self.price * self.qty, 2)
+
+    def covered_codes(self) -> set[str]:
+        """本餐品「覆盖」的商品编码集合（递归包含套餐内含单品）。
+
+        有了它，「这份方案是否满足需求」就能用同一套逻辑判断，
+        不必为套餐单独写特例。内含单品由 `query-meal-detail` 提供，
+        解析走 `mcd_adapter.parse_combo_from_detail`。
+
+        ⚠️ **套餐内单品的编码可能与菜单单点不同**。实测「麦辣鸡腿汉堡三件套」：
+        内含可乐是 `3050`（可乐中杯），而菜单上单点的可乐是 `9900008751`。
+        所以按编码做需求判断时，调用方需要自己处理这类等价关系。
+        """
+        codes = {self.code}
+        for part in self.parts:
+            codes |= part.covered_codes()
+        return codes
 
 
 @dataclass
@@ -68,6 +85,17 @@ class Plan:
     def goods_amount(self) -> float:
         """商品原价合计。"""
         return round(sum(i.subtotal for i in self.items), 2)
+
+    def covered_codes(self) -> set[str]:
+        """本方案覆盖的商品编码集合（含各套餐内含单品）。
+
+        供「需求是否满足」判断使用 —— 与 `Item.covered_codes()` 配套，
+        让「套餐」和「单点组合」在需求判断面前是平等的。
+        """
+        codes: set[str] = set()
+        for item in self.items:
+            codes |= item.covered_codes()
+        return codes
 
 
 @dataclass
@@ -106,8 +134,15 @@ def build_base_plans(
     mains: list[Item],
     sides: list[Item],
     combos: list[list[Item]],
+    max_sides: int = 1,
 ) -> list[Plan]:
-    """构造基础候选方案：单点组合、套餐方案。"""
+    """构造基础候选方案：单点、单点 + 配餐、套餐。
+
+    **关于 `max_sides`**：默认 1，即只枚举「主食 + 单个配餐」。
+    需求要求三样齐全时（例如「汉堡 + 薯条 + 可乐」），必须传 2 ——
+    否则根本枚举不出「主食 + 两个配餐」这个等价单点组合，
+    而它正是用来和套餐做同内容对比的那一条。
+    """
 
     plans: list[Plan] = []
 
@@ -115,14 +150,18 @@ def build_base_plans(
     for m in mains:
         plans.append(Plan(items=[m], label=f"单点：{m.name}"))
 
-    # 主餐 + 配餐的单点组合
+    # 主餐 + 最多 max_sides 个配餐（组合内按传入顺序，保证结果可复现）
     for m in mains:
-        for s in sides:
-            plans.append(Plan(items=[m, s], label=f"单点组合：{m.name} + {s.name}"))
+        for n in range(1, min(max_sides, len(sides)) + 1):
+            for combo in itertools.combinations(sides, n):
+                items = [m, *combo]
+                names = " + ".join(i.name for i in items)
+                plans.append(Plan(items=items, label=f"单点：{names}"))
 
-    # 套餐
-    for idx, combo in enumerate(combos, start=1):
-        plans.append(Plan(items=list(combo), label=f"套餐方案 {idx}"))
+    # 套餐（用商品名做标签，比「套餐方案 1」可读）
+    for combo in combos:
+        names = " + ".join(i.name for i in combo)
+        plans.append(Plan(items=list(combo), label=f"套餐：{names}"))
 
     return plans
 
@@ -205,11 +244,14 @@ def rank(priced: list[PricedPlan]) -> list[PricedPlan]:
 
 
 def within_budget(priced: list[PricedPlan], budget: float) -> list[PricedPlan]:
-    """筛出预算内的方案（保持实付升序）；若全部超预算，返回最便宜的若干个。"""
-    ok = [p for p in priced if p.payable <= budget]
-    if ok:
-        return rank(ok)
-    return rank(priced)[:3]
+    """筛出预算内的方案，保持实付升序；预算内一个都没有时返回空列表。
+
+    此前这里会在「全部超预算」时兜底返回最便宜的几个 ——
+    那等于把超预算的方案**伪装成推荐**。现在如实返回空，
+    由 `recommend()` 把超预算的部分单独放进 `over_budget` 作为对照，
+    这样「预算内没有方案」与「有方案但更贵」就不会被混为一谈。
+    """
+    return rank([p for p in priced if p.payable <= budget])
 
 
 def detect_filler_trap(priced: list[PricedPlan]) -> list[dict]:
@@ -313,9 +355,11 @@ def recommend(
     sides: list[Item],
     combos: list[list[Item]],
     coupons: list[Coupon],
-    price_fn,
+    price_fn: Callable[[Plan], PricedPlan],
     budget: Optional[float] = None,
     top_k: int = 3,
+    demand: Optional[Callable[[Plan], bool]] = None,
+    max_sides: int = 1,
 ) -> dict:
     """生成省钱推荐。
 
@@ -329,17 +373,27 @@ def recommend(
               **必须**由调用方封装 MCP 的 calculate-price，禁止本地估算。
     budget  : 预算上限（可选）
     top_k   : 返回的推荐方案数量
+    demand  : **需求判定**，签名 demand(plan) -> bool。传 None 表示不约束。
+              ⚠️ 它在**排序之前**生效 —— 否则「更便宜但吃不饱」的方案会挤进
+              推荐与备选。用 `Plan.covered_codes()` 可以方便地判断「是否包含
+              某几样」，套餐内含单品也会被算进去。
+    max_sides: 最多配几个配餐。需求要三样齐全时必须传 ≥ 2，
+              否则枚举不出「主食 + 两个配餐」这条对照组合。
 
     返回
     ----
     {
-      "recommended": [PricedPlan, ...],
-      "warnings":    [ {...}, ... ],
+      "recommended": [PricedPlan, ...],  # 满足需求且在预算内（按实付升序）
+      "over_budget": [PricedPlan, ...],  # 满足需求但超预算 —— 仅供对照，不推荐
+      "warnings":    [ {...}, ... ],     # 凑单陷阱警告（对全部候选检测）
       "best":        PricedPlan | None,
     }
+
+    「预算内没有方案」与「有方案但更贵」是两回事，因此分开返回：
+    前者 `recommended` 为空、`over_budget` 有值；后者两者都有值。
     """
 
-    base = build_base_plans(mains, sides, combos)
+    base = build_base_plans(mains, sides, combos, max_sides=max_sides)
     with_coupons = attach_coupons(base, coupons)
     fillers = build_filler_plans(mains, sides, coupons)
     candidates = dedupe_plans([*with_coupons, *fillers])
@@ -347,16 +401,22 @@ def recommend(
     # 逐方案真实计价（由 price_fn 调用 MCP calculate-price）
     priced: list[PricedPlan] = [price_fn(p) for p in candidates]
 
-    ranked = rank(priced)
-    if budget is not None:
-        ranked = within_budget(priced, budget)
+    # 需求筛选必须在排序之前，否则更便宜但吃不饱的方案会混进来
+    wanted = [p for p in priced if demand(p.plan)] if demand else list(priced)
+    ranked = rank(wanted)
+
+    over_budget: list[PricedPlan] = []
+    if budget is None:
+        recommended = ranked[:top_k]
     else:
-        ranked = ranked[:top_k]
+        recommended = within_budget(ranked, budget)[:top_k]
+        over_budget = [p for p in ranked if p.payable > budget][:top_k]
 
     return {
-        "recommended": ranked[:top_k],
+        "recommended": recommended,
+        "over_budget": over_budget,
         "warnings": detect_filler_trap(priced),
-        "best": ranked[0] if ranked else None,
+        "best": recommended[0] if recommended else None,
     }
 
 
@@ -385,6 +445,17 @@ def render(result: dict) -> str:
             lines.append(f"  · {alt.label} —— 实付 {alt.payable} 元")
         lines.append("")
 
+    # 满足需求但超出预算的：单独成块，标明「仅供对照」，不与备选混在一起
+    over = result.get("over_budget") or []
+    if over:
+        lines.append("超预算（仅供对照）")
+        for alt in over:
+            delta = ""
+            if rec:
+                delta = f"，比推荐方案贵 {round(alt.payable - rec[0].payable, 2)} 元"
+            lines.append(f"  · {alt.label} —— 实付 {alt.payable} 元{delta}")
+        lines.append("")
+
     warnings = result.get("warnings") or []
     if warnings:
         lines.append("需要提醒你")
@@ -393,7 +464,13 @@ def render(result: dict) -> str:
         lines.append("")
 
     if not rec:
-        lines.append("当前条件下没有可用方案，请检查门店或券信息。")
+        if over:
+            lines.append(
+                f"你的预算内没有可用方案 —— 最便宜的同需求方案要 "
+                f"{over[0].payable} 元。"
+            )
+        else:
+            lines.append("当前条件下没有可用方案，请检查门店或券信息。")
 
     return "\n".join(lines).rstrip()
 

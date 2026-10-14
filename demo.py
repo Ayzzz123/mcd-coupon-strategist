@@ -32,6 +32,7 @@ from mcd_adapter import (  # noqa: E402
     build_menu_price_table,
     parse_available_coupons,
     parse_claimable_coupons,
+    parse_combo_from_detail,
     parse_coupon_probes,
     parse_coupon_stock,
     parse_menu,
@@ -47,15 +48,7 @@ from planner import (  # noqa: E402
     render_portfolio,
     render_schedule,
 )
-from saver import (  # noqa: E402
-    Plan,
-    PricedPlan,
-    build_base_plans,
-    dedupe_plans,
-    detect_filler_trap,
-    rank,
-    render,
-)
+from saver import Plan, PricedPlan, recommend, render  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "fixtures")
 
@@ -68,6 +61,10 @@ CODE_BURGER = "1440"          # 麦辣鸡腿汉堡   22.5
 CODE_COMBO3 = "9900005456"    # 麦辣鸡腿汉堡三件套 33.5
 CODE_FRIES = "4810"           # 薯条           14.5
 CODE_COLA = "9900008751"      # 可乐            9.5
+
+# 套餐内含饮品的编码与菜单单点不同：三件套里的可乐是 3050（可乐中杯）。
+# 判断「三样齐全」时两者都要认，否则套餐会被误判为不满足需求。
+COLA_CODES = {CODE_COLA, "3050"}
 
 BUDGET = 40.0
 
@@ -89,6 +86,8 @@ PRICE_BOOK: dict = load("prices.json")["prices"]
 COUPON_PROBES: dict = load("coupon_probe.json")["probes"]
 # 麦麦省券列表（含还没领取的）。该工具返回 Markdown 文本，不是 JSON
 AVAILABLE = load("available_coupons.json")
+# 套餐构成 —— 让套餐知道自己装了什么（详见 fixtures/meal_detail.json）
+MEAL_DETAIL = load("meal_detail.json")
 
 
 # --------------------------------------------------------------------------
@@ -128,59 +127,54 @@ def recorded_price(plan: Plan) -> PricedPlan:
 
 
 def chain_a() -> None:
-    """链路 A：枚举候选方案并用录制的 calculate-price 结果计价，输出最省方案。"""
+    """链路 A：走 saver.recommend() 的完整流水线 —— 枚举、计价、需求筛选、排序。"""
     print("=" * 66)
     print("链路 A · 单次省钱")
     print("=" * 66)
     print(f"门店：{STORE_NAME}（到店自取）")
-    print("需求：想吃「汉堡 + 薯条 + 可乐」，预算 40 元")
+    print(f"需求：想吃「汉堡 + 薯条 + 可乐」，预算 {BUDGET:.0f} 元")
     print()
 
     mains, sides = parse_menu(MENU)
     by_code = {i.code: i for i in [*mains, *sides]}
 
-    burger, combo3 = by_code[CODE_BURGER], by_code[CODE_COMBO3]
-    fries, cola = by_code[CODE_FRIES], by_code[CODE_COLA]
+    burger = by_code[CODE_BURGER]
+    fries = by_code[CODE_FRIES]
+    cola = by_code[CODE_COLA]
+    combo3 = by_code[CODE_COMBO3]
 
-    # 枚举候选：单品 / 单品+配餐 / 套餐
-    plans = build_base_plans([burger], [fries, cola], [[combo3]])
-    for p in plans:
-        # build_base_plans 给套餐的标签是「套餐方案 1」，换成可读名称
-        if p.items and p.items[0].code == CODE_COMBO3:
-            p.label = f"套餐：{combo3.name}"
-    # build_base_plans 只枚举「主食」与「主食 + 1 个配餐」。
-    # 需求要三样齐全，故显式补上「主食 + 2 个配餐」的等价单点组合，
-    # 用于与三件套做**同内容**对比。（有券时 build_filler_plans 会枚举这一类。）
-    plans.append(
-        Plan(items=[burger, fries, cola], label="单点：麦辣鸡腿汉堡 + 中薯条 + 可乐")
+    # 让套餐知道自己装了什么 —— 内含单品来自真实的 query-meal-detail 响应。
+    # 有了它，covered_codes() 才能把「套餐」和「单点组合」放在同一把尺子上量。
+    combo3.parts = parse_combo_from_detail(MEAL_DETAIL)
+
+    def wants(plan: Plan) -> bool:
+        """需求：汉堡 + 薯条 + 可乐，三样齐全（套餐内含单品也算）。"""
+        codes = plan.covered_codes()
+        return (
+            CODE_BURGER in codes
+            and CODE_FRIES in codes
+            and bool(codes & COLA_CODES)
+        )
+
+    # max_sides=2：需求要三样齐全，必须枚举出「主食 + 两个配餐」这条对照组合，
+    # 否则只有套餐能满足需求，也就无从对比「同样三样，单点要多少钱」。
+    result = recommend(
+        mains=[burger],
+        sides=[fries, cola],
+        combos=[[combo3]],
+        coupons=[],
+        price_fn=recorded_price,
+        budget=BUDGET,
+        top_k=2,
+        demand=wants,
+        max_sides=2,
     )
-
-    priced = [recorded_price(p) for p in dedupe_plans(plans)]
-
-    # 需求约束：三样必须齐全 —— 这正是不推荐「更便宜但吃不饱」选项的原因
-    def satisfies(plan: Plan) -> bool:
-        """三样是否齐全：三件套自带三样，或单点组合同时含汉堡/薯条/可乐。"""
-        codes = {i.code for i in plan.items}
-        return CODE_COMBO3 in codes or {CODE_BURGER, CODE_FRIES, CODE_COLA} <= codes
-
-    satisfying = rank([p for p in priced if satisfies(p.plan)])
-
-    result = {
-        "recommended": satisfying,
-        "warnings": detect_filler_trap(priced),
-        "best": satisfying[0] if satisfying else None,
-    }
     print(render(result))
 
-    if len(satisfying) >= 2:
-        best, alt = satisfying[0], satisfying[-1]
+    # 超预算的那条不是「备选」，是对照 —— 它承载了本项目最核心的结论
+    if result["over_budget"]:
         print()
-        print(
-            f"  → 同样吃到「汉堡 + 薯条 + 可乐」："
-            f"{best.payable} 元 vs {alt.payable} 元，"
-            f"差 {round(alt.payable - best.payable, 2)} 元。"
-        )
-        print("     这个价差来自套餐结构本身，不需要任何优惠券。")
+        print("  → 这个价差来自套餐结构本身，不需要任何优惠券 —— 这是最稳的省法。")
     print()
 
 

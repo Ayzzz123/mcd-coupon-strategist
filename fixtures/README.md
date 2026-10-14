@@ -12,6 +12,8 @@
 | `prices.json` | `calculate-price` | **逐字保留**的计价响应，按商品组合签名索引 |
 | `coupon_probe.json` | `calculate-price`（带券计价） | **逐字保留**。用券自带的 `productCode` + `couponId` 调价，`discount` 即券的**精确价值** |
 | `available_coupons.json` | `available-coupons` | ⚠️ **该工具返回的是 Markdown 文本，不是 JSON**。文本原样放在 `raw` 字段里，解析器见 `parse_available_coupons()` |
+| `points_account.json` | `query-my-account` | **逐字保留**。积分账户（可用 / 累计 / 已用 / **已过期 17**）。⚠️ 积分字段是字符串且可为小数 |
+| `points_products.json` | `mall-points-products` | **节选**：保留全部语义字段，省略图片与 shopId。⚠️ 24 个商品里 **15 个的 `downTime` 已过、`status` 却仍报「上架」** |
 
 ## 采集信息
 
@@ -103,6 +105,24 @@
 
 **同一件商品，两个编码。** 按编码判断「三样齐全」时若不处理这层等价关系，
 套餐会被误判成「不满足需求」，推荐结果就错了。
+
+## 为什么这两份积分 fixture 单独录
+
+`points_account.json` 与 `points_products.json` 采集于 **2026-10-14**，比主链路晚两天 ——
+所以 `demo.py` 里它们用自己的日期（`POINTS_TODAY`）判断兑换截止日，而不是主链路的 `FIXTURE_TODAY`。
+
+它们共同支撑本轮最有价值的发现：**接口的 `status` 不等于「可兑换」**。
+
+| | 数量 |
+|---|---:|
+| 积分商城返回的商品 | 24 |
+| 其中 `downTime` 已过（状态却仍标「上架」） | **15** |
+| 实际仍在兑换期内 | 9 |
+
+只看 `status` 会告诉用户「你有 24 个可以换」。这属于「文档/字段说的」与
+「业务事实」不一致 —— 能自己按截止日校验，就不要把判断权交给一个可能过期的字段。
+
+另外积分账户里已经**过期过 17 积分**，这不是推算，是接口直接给出的既成事实。
 
 ## 为什么「可领取的券」在 demo 里全是「价值未知」
 

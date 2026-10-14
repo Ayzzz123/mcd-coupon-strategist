@@ -23,6 +23,7 @@ from datetime import date, datetime
 from typing import Any, NamedTuple, Optional
 
 from auditor import CouponStock, OrderRecord
+from points import PointsAccount, RedeemableItem
 from saver import Coupon, Item, Plan, PricedPlan
 
 
@@ -708,6 +709,77 @@ def parse_claimable_coupons(
     return stock
 
 
+# --------------------------------------------------------------------------
+# 积分：账户与可兑换商品
+# --------------------------------------------------------------------------
+
+
+def _to_float(raw: Any) -> float:
+    """把 MCP 返回的字符串数值转为 float；无法解析时返回 0.0。
+
+    积分字段全部是字符串（如 `"376.3"`），且可以是小数 —— 不能当整数处理。
+    """
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _to_int(raw: Any) -> int:
+    """把 MCP 返回的 ID 类字段转为 int；无法解析时返回 0。"""
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def parse_points_account(account_response: dict) -> PointsAccount:
+    """解析 query-my-account 的响应为 `PointsAccount`。
+
+    注意两点：
+
+    - 所有积分字段都是**字符串**且**可以是小数**（`"376.3"`），按整数解析会丢精度。
+    - 接口里拼写为 `currentMouthExpirePoint` / `nextMouthExpirePoint`
+      （Mouth 而非 Month），这是接口本身的拼写，不是笔误 —— 按原样读取。
+    """
+    data = account_response.get("data") or {}
+    return PointsAccount(
+        available=_to_float(data.get("availablePoint")),
+        accumulative=_to_float(data.get("accumulativePoint")),
+        used=_to_float(data.get("usedPoint")),
+        expired=_to_float(data.get("expiredPoint")),
+        expiring_this_month=_to_float(data.get("currentMouthExpirePoint")),
+        expiring_next_month=_to_float(data.get("nextMouthExpirePoint")),
+        frozen=_to_float(data.get("frozenPoint")),
+    )
+
+
+def parse_points_products(product_response: dict) -> list[RedeemableItem]:
+    """解析 mall-points-products 的响应为可兑换商品列表。
+
+    只读结构化字段（`spuName` / `spuId` / `point` / `downTime` / `status`）。
+
+    ⚠️ **不要从 `note`（购买须知）里提取兑换内容或金额。** `mall-product-detail`
+    的响应说明明确要求：「纯展示文案，必须原文展示给用户，严禁从中提取任何数值
+    用于下单校验、价格计算、库存判断等业务逻辑」。见 fixtures/mall_product_detail.json。
+    """
+    items: list[RedeemableItem] = []
+    for raw in product_response.get("data") or []:
+        name = str(raw.get("spuName") or "").strip()
+        if not name:
+            continue
+        items.append(
+            RedeemableItem(
+                spu_id=_to_int(raw.get("spuId")),
+                name=name,
+                points=_to_float(raw.get("point")),
+                deadline=_parse_datetime(raw.get("downTime")),
+                status=str(raw.get("status") or ""),
+            )
+        )
+    return items
+
+
 __all__ = [
     "CENTS_PER_YUAN",
     "AvailableCoupon",
@@ -725,6 +797,8 @@ __all__ = [
     "parse_claimable_coupons",
     "parse_coupon_probes",
     "parse_coupon_stock",
+    "parse_points_account",
+    "parse_points_products",
     "build_menu_price_table",
     "coupon_value_and_cost",
     "coupon_real_value",

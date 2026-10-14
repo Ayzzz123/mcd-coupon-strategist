@@ -37,6 +37,8 @@ from mcd_adapter import (  # noqa: E402
     parse_coupon_stock,
     parse_menu,
     parse_orders,
+    parse_points_account,
+    parse_points_products,
     parse_price_response,
 )
 from planner import (  # noqa: E402
@@ -48,6 +50,7 @@ from planner import (  # noqa: E402
     render_portfolio,
     render_schedule,
 )
+from points import audit_points, render_points  # noqa: E402
 from saver import Plan, PricedPlan, recommend, render  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "fixtures")
@@ -55,6 +58,8 @@ FIXTURES = os.path.join(HERE, "fixtures")
 # 录制的门店与日期。写死是为了让 demo 的输出可复现。
 STORE_NAME = "麦当劳南京东城汇餐厅(1990622)"
 FIXTURE_TODAY = date(2026, 10, 12)
+# 积分数据是另一批采集（10-14），按它自己的日期判断兑换截止日
+POINTS_TODAY = date(2026, 10, 14)
 
 # demo 场景用到的商品编码（均来自 fixtures/menu.json 的真实菜单）
 CODE_BURGER = "1440"          # 麦辣鸡腿汉堡   22.5
@@ -88,6 +93,9 @@ COUPON_PROBES: dict = load("coupon_probe.json")["probes"]
 AVAILABLE = load("available_coupons.json")
 # 套餐构成 —— 让套餐知道自己装了什么（详见 fixtures/meal_detail.json）
 MEAL_DETAIL = load("meal_detail.json")
+# 积分账户与积分商城（另一批采集：2026-10-14）
+POINTS_ACCOUNT = load("points_account.json")
+POINTS_PRODUCTS = load("points_products.json")
 
 
 # --------------------------------------------------------------------------
@@ -259,14 +267,24 @@ def chain_b() -> None:
     print()
 
 
+def points_section() -> None:
+    """积分体检：余额、有效期、能换什么、够不够。"""
+    account = parse_points_account(POINTS_ACCOUNT)
+    items = parse_points_products(POINTS_PRODUCTS)
+    print(render_points(audit_points(account, items, today=POINTS_TODAY)))
+    print()
+
+
 def main() -> None:
-    """依次跑通两条链路。"""
+    """依次跑通两条链路，再做一次积分体检。"""
     print()
     print("麦麦省钱助手 · 零配置演示")
-    print(f"数据：fixtures/ 中录制的真实 MCP 响应（{FIXTURE_TODAY} 采集）")
+    print("数据：fixtures/ 中录制的真实 MCP 响应")
+    print("      （主链路 2026-10-12 采集，积分部分 2026-10-14 采集）")
     print()
     chain_a()
     chain_b()
+    points_section()
 
 
 if __name__ == "__main__":

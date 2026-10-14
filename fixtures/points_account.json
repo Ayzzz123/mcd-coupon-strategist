@@ -1,0 +1,21 @@
+{
+  "_source": "麦当劳官方 MCP · query-my-account",
+  "_captured_at": "2026-10-14 19:22:59",
+  "_note": "逐字保留，未做改动。该工具不接受任何参数。",
+  "_field_units": "所有积分字段都是**字符串**（如 \"376.3\"），需要解析为数值。积分可以是小数。",
+  "success": true,
+  "code": 200,
+  "message": "请求成功",
+  "data": {
+    "accountId": "02009973643795359341744290094",
+    "currency": "麦享会积分",
+    "availablePoint": "376.3",
+    "accumulativePoint": "581.3",
+    "usedPoint": "188",
+    "expiredPoint": "17",
+    "currentMouthExpirePoint": "0",
+    "lastMouthExpirePoint": "0",
+    "nextMouthExpirePoint": "0",
+    "frozenPoint": "0"
+  }
+}

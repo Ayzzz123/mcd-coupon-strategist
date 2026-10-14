@@ -129,6 +129,12 @@ def _public_names(tree: ast.Module) -> list[str]:
                 name = target.id
                 if name.isupper() and not name.startswith("_"):
                     names.append(name)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            # 带类型标注的模块级常量（`NAME: tuple[...] = (...)`）同样是公开定义。
+            # 漏掉这类会让「常量忘了写进 __all__」逃过检查 —— 本项目踩过一次。
+            name = node.target.id
+            if name.isupper() and not name.startswith("_"):
+                names.append(name)
     return names
 
 

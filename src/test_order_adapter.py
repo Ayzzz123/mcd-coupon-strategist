@@ -143,8 +143,16 @@ def main() -> None:
     assert total == 24.8, f"过滤退款后总额应为 1 + 23.8 = 24.8，实际 {total}"
     # orderStatus 必须原样带过来 —— 消费画像要靠它识别「部分退款」并如实提示
     assert all(o.status for o in orders), "orderStatus 不应在适配层被丢掉"
+
+    # 下单小时同样必须保留 —— 消费画像要靠它分时段
+    # （菜单分时段供应，所以「几点点的」也是消费结构的一部分）
+    assert a1.order_hour == 15, f"15:57 下单应解析出小时 15，实际 {a1.order_hour}"
+    assert a3.order_hour == 21, f"21:27 下单应解析出小时 21，实际 {a3.order_hour}"
+    assert a3.time_of_day == "晚市", "21:27 应归属晚市时段"
+    assert date(2026, 10, 2) == a1.order_time, "日期解析不受小时解析影响"
     print(f"   [PASS] 退款单已过滤，总额 {total} 元（未包含退款的 15.5 元）")
     print("           orderStatus 原样保留（供识别「部分退款」）")
+    print("           order_hour 原样保留（供分时段分析）")
     print()
 
     print("=" * 60)

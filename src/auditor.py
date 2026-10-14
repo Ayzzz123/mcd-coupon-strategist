@@ -72,6 +72,12 @@ class OrderRecord:
     items: list[str] = field(default_factory=list)
     channel: str = ""  # 外送 / 到店
     status: str = ""  # 原始 orderStatus，用于识别「部分退款」
+    order_hour: Optional[int] = None  # 下单小时（0-23）。未知则为 None
+
+    @property
+    def time_of_day(self) -> Optional[str]:
+        """这笔订单属于哪个供应时段。小时未知则返回 None。"""
+        return time_of_day(self.order_hour)
 
     @property
     def is_spending(self) -> bool:
@@ -85,6 +91,39 @@ class OrderRecord:
         这正是本项目区分「消费口径」与「点单口径」的原因。
         """
         return self.amount > 0
+
+
+# --------------------------------------------------------------------------
+# 供应时段
+# --------------------------------------------------------------------------
+
+# 麦当劳的菜单是分时段供应的（早餐卖麦满分，正餐卖汉堡），
+# 所以「什么时候点的」和「点了多少钱」一样是消费结构的一部分。
+TIME_BUCKETS: tuple[tuple[str, int, int], ...] = (
+    ("早餐", 5, 10),   # 05:00 - 10:59
+    ("午市", 11, 13),  # 11:00 - 13:59
+    ("下午", 14, 16),  # 14:00 - 16:59
+    ("晚市", 17, 21),  # 17:00 - 21:59
+    ("夜宵", 22, 4),   # 22:00 - 04:59（跨零点）
+)
+
+# 一个时段至少要这么多**有实际支出**的订单，才允许给出该时段的客单价。
+# 低于这个数，样本量支撑不起一个「基准」，报出来只是噪音 ——
+# 宁可说「样本不足」，也不给一个看起来很精确的假数字。
+MIN_ORDERS_PER_BUCKET = 3
+
+
+def time_of_day(hour: Optional[int]) -> Optional[str]:
+    """把 0-23 的小时映射到供应时段名。小时未知则返回 None。"""
+    if hour is None:
+        return None
+    for name, start, end in TIME_BUCKETS:
+        if start <= end:
+            if start <= hour <= end:
+                return name
+        elif hour >= start or hour <= end:  # 跨零点的夜宵
+            return name
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -211,6 +250,8 @@ def consumption_profile(
       "daily_avg": float,
       "channel_mix": {...},          # 外送/到店占比
       "top_items": [...],            # 高频餐品
+      "time_buckets": [...],         # 供应时段分布（见下方「时段」说明）
+      "main_bucket": str | None,     # 主力时段；占比不够高则为 None
       "insights": [str, ...],        # 可执行的省钱洞察
     }
 
@@ -221,6 +262,16 @@ def consumption_profile(
       是循环论证，还会把基准拉低，让所有券都显得更难用上。
     - **点单口径**（`order_count`）—— 算机会。0 元订单也算一次点单，
       所以推算「券过期前你还会点几单」时应当计入。
+
+    时段说明
+    --------
+    麦当劳的菜单是**分时段供应**的（早餐卖麦满分，正餐卖汉堡），
+    所以「几点点的」和「花了多少」一样，都是消费结构的一部分。
+
+    但每个时段的样本往往很少，直接用它会得到一堆噪音。因此
+    **只有该时段有支出的订单数达到 `MIN_ORDERS_PER_BUCKET`，才给出
+    该时段的客单价**；达不到就只报单数并标注样本不足，`avg` 为 None。
+    宁可说「样本不足」，也不给一个看起来很精确的假数字。
     """
 
     if not orders:
@@ -229,6 +280,7 @@ def consumption_profile(
             "partial_refund_count": 0, "total_spent": 0.0,
             "avg_per_order": 0.0, "avg_all_orders": 0.0,
             "daily_avg": 0.0, "channel_mix": {}, "top_items": [],
+            "time_buckets": [], "main_bucket": None,
             "insights": ["还没有历史订单，多下几单后就能给你做消费分析了。"],
         }
 
@@ -247,6 +299,47 @@ def consumption_profile(
     channel_count: dict[str, int] = {}
     for o in orders:
         channel_count[o.channel or "未知"] = channel_count.get(o.channel or "未知", 0) + 1
+
+    # 供应时段分布。小时未知的订单**不参与**，也不凭空归到某一类。
+    bucket_stat: dict[str, dict] = {}
+    for o in orders:
+        name = o.time_of_day
+        if name is None:
+            continue
+        b = bucket_stat.setdefault(name, {"orders": 0, "spending": 0, "total": 0.0})
+        b["orders"] += 1
+        if o.is_spending:
+            b["spending"] += 1
+            b["total"] += o.amount
+
+    # 按时间顺序输出（早 → 晚），而不是按单数排 —— 时段本身是有序的
+    time_buckets: list[dict] = []
+    for name, _start, _end in TIME_BUCKETS:
+        b = bucket_stat.get(name)
+        if not b:
+            continue
+        bucket_total = round(b["total"], 2)
+        reliable = b["spending"] >= MIN_ORDERS_PER_BUCKET
+        time_buckets.append({
+            "name": name,
+            "orders": b["orders"],
+            "spending_orders": b["spending"],
+            "total": bucket_total,
+            "avg": round(bucket_total / b["spending"], 2) if reliable else None,
+            "reliable": reliable,
+        })
+
+    # 已识别时段的订单数 —— 占比的分母用它，而不是全部订单数，
+    # 否则小时未知的订单会把每个时段的占比都压低。
+    bucketed = sum(b["orders"] for b in time_buckets)
+
+    # 主力时段：既要单数够多，也要占比够高，否则「最集中的那个」可能只是
+    # 一堆 1 单里挑出来的最大者，没有意义。
+    main_bucket: Optional[str] = None
+    if time_buckets:
+        top = max(time_buckets, key=lambda b: b["orders"])
+        if top["orders"] >= MIN_ORDERS_PER_BUCKET and top["orders"] >= bucketed * 0.4:
+            main_bucket = top["name"]
 
     # 高频餐品
     item_count: dict[str, int] = {}
@@ -312,6 +405,41 @@ def consumption_profile(
                        sorted(channel_count.items(), key=lambda kv: -kv[1]))
         insights.append(f"下单渠道分布：{mix}。外送会额外产生配送费，计入成本会更准。")
 
+    # 洞察 6：主力时段
+    if main_bucket and bucketed:
+        top = next(b for b in time_buckets if b["name"] == main_bucket)
+        share = round(top["orders"] * 100 / bucketed)
+        insights.append(
+            f"你的点单集中在「{main_bucket}」时段：{bucketed} 单里有 "
+            f"{top['orders']} 单（{share}%）落在这里 —— "
+            f"菜单是分时段供应的，选券时要优先挑这个时段用得上的。"
+        )
+
+    # 洞察 7：口径提醒 —— 全局客单价是混合口径。
+    # 这是「口径」问题在本项目里的第二次出现（第一次是 0 元订单污染基准）。
+    unreliable = [b["name"] for b in time_buckets if not b["reliable"]]
+    if len(time_buckets) > 1 and unreliable:
+        names = "、".join(unreliable)
+        insights.append(
+            f"口径提醒：{avg} 元这个客单价是「全时段混合」的平均值。"
+            f"「{names}」时段有支出的订单还不到 {MIN_ORDERS_PER_BUCKET} 笔，"
+            f"样本不足以单独估算 —— 如果那里实际花得和整体不一样，"
+            f"用这个基准去判断对应时段的券就会偏。"
+        )
+
+    # 洞察 8：某个样本充足的时段，客单价与整体差异明显
+    for b in time_buckets:
+        if not b["reliable"] or not avg:
+            continue
+        gap = round(abs(b["avg"] - avg), 2)
+        if gap >= max(5.0, avg * 0.3):
+            direction = "高" if b["avg"] > avg else "低"
+            insights.append(
+                f"「{b['name']}」时段客单价 {b['avg']} 元，比整体 {avg} 元"
+                f"{direction} {gap} 元 —— 判断这个时段能用的券时，"
+                f"用整体客单价会偏。"
+            )
+
     return {
         "order_count": count,
         "spending_order_count": spending_count,
@@ -323,6 +451,8 @@ def consumption_profile(
         "daily_avg": daily,
         "channel_mix": channel_count,
         "top_items": [{"name": n, "times": t} for n, t in top_items],
+        "time_buckets": time_buckets,
+        "main_bucket": main_bucket,
         "insights": insights,
     }
 
@@ -404,6 +534,25 @@ def render_audit(report: dict) -> str:
             avg_txt += f"（按 {spending} 笔有支出的订单计算）"
         lines.append(avg_txt)
 
+        # 时段分布：只在订单带时段信息时输出。样本不足的时段只报单数，
+        # 不给客单价 —— 阈值判断在 consumption_profile 里，这里只负责如实呈现。
+        buckets = p.get("time_buckets") or []
+        if buckets:
+            lines.append("")
+            lines.append("  时段分布：")
+            for b in buckets:
+                if b["spending_orders"] != b["orders"]:
+                    scope = f"{b['orders']} 单（{b['spending_orders']} 笔有支出）"
+                else:
+                    scope = f"{b['orders']} 单"
+                if b["reliable"]:
+                    tail = f"客单价 {b['avg']} 元"
+                else:
+                    tail = f"样本不足 {MIN_ORDERS_PER_BUCKET} 笔，未估算客单价"
+                lines.append(
+                    f"    {b['name']} · {scope} · 支出 {b['total']} 元 · {tail}"
+                )
+
         lines.append("")
         lines.append("  洞察：")
         for ins in p.get("insights", []):
@@ -427,10 +576,13 @@ def render_audit(report: dict) -> str:
 
 
 __all__ = [
+    "MIN_ORDERS_PER_BUCKET",
+    "TIME_BUCKETS",
     "CouponStock",
     "OrderRecord",
     "coupon_silent_cost",
     "consumption_profile",
     "audit_report",
     "render_audit",
+    "time_of_day",
 ]

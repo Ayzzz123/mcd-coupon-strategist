@@ -14,14 +14,24 @@
 | `available_coupons.json` | `available-coupons` | ⚠️ **该工具返回的是 Markdown 文本，不是 JSON**。文本原样放在 `raw` 字段里，解析器见 `parse_available_coupons()` |
 | `points_account.json` | `query-my-account` | **逐字保留**。积分账户（可用 / 累计 / 已用 / **已过期 17**）。⚠️ 积分字段是字符串且可为小数 |
 | `points_products.json` | `mall-points-products` | **节选**：保留全部语义字段，省略图片与 shopId。⚠️ 24 个商品里 **15 个的 `downTime` 已过、`status` 却仍报「上架」** |
+| `campaign_calendar.md` | `campaign-calendar` | ⚠️ **Markdown 文本**，直接存 `.md` 而不套 JSON（原文大量换行，转义反而易错）。**只保留「日期分节 + 活动标题」**，省略了「活动内容介绍」与图片 —— 那是营销文案，解析不使用，且里面含无法核实的价格 |
 
 ## 采集信息
 
-- **时间**：2026-10-12 21:59 ~ 22:00（`available_coupons.json` 为 2026-10-13 22:18）
-- **门店**：麦当劳南京东城汇餐厅 `storeCode=1990622`
+分四批采集，所以各自按自己的「当天」判断时效：
+
+| 批次 | 时间 | 文件 |
+|---|---|---|
+| 主链路 | 2026-10-12 21:59 ~ 22:00 | `menu` / `coupons` / `orders` / `prices` / `coupon_probe` / `meal_detail` |
+| 麦麦省券 | 2026-10-13 22:18 | `available_coupons.json` |
+| 积分 | 2026-10-14 19:22 | `points_account.json` / `points_products.json` |
+| 活动日历 | 2026-10-14 19:40 | `campaign_calendar.md` |
+
+- **门店**：麦当劳南京东城汇餐厅 `storeCode=1990622`（仅主链路）
 - **下单方式**：到店自取 `orderType=1 beType=1`
-- **`available-coupons` 例外**：该工具**不接受任何参数**，返回账户全域的麦麦省券，
-  不限于某个门店 —— 所以它单独录了一份
+- **两处例外**：`available-coupons` 与 `campaign-calendar` **都没有必填参数**，
+  返回的是账户全域 / 全月的数据，**不限于某个门店** —— 所以各自单独录了一份。
+  `demo.py` 也因此用各自的「今天」（`POINTS_TODAY` / `CAMPAIGN_TODAY`）判断时效。
 
 ## 为什么要有「录制」
 

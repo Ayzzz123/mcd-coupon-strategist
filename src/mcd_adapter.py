@@ -23,6 +23,7 @@ from datetime import date, datetime
 from typing import Any, NamedTuple, Optional
 
 from auditor import CouponStock, OrderRecord
+from campaign import CampaignDay
 from points import PointsAccount, RedeemableItem
 from saver import Coupon, Item, Plan, PricedPlan
 
@@ -282,6 +283,25 @@ def _parse_datetime(raw: Any) -> Optional[date]:
         return None
 
 
+def _parse_hour(raw: Any) -> Optional[int]:
+    """从 MCP 的时间字符串里取出小时（0-23）。取不到返回 None。
+
+    与 `_parse_datetime` 分开实现，因为两者的用途和失败代价不同：
+    日期用于「多久之前」，小时用于「哪个供应时段」。只有日期没有时间时，
+    日期仍然可用，只是时段未知 —— 分开解析可以保住那一半信息。
+    """
+    if not raw:
+        return None
+    s = str(raw).strip()
+    for sep in (" ", "T"):
+        if sep in s:
+            rest = s.split(sep, 1)[1]
+            head = rest.split(":", 1)[0].strip()
+            if head.isdigit() and 0 <= int(head) <= 23:
+                return int(head)
+    return None
+
+
 def parse_orders(order_response: dict) -> list[OrderRecord]:
     """解析 order-list 的响应为 auditor.OrderRecord 列表。
 
@@ -338,6 +358,9 @@ def parse_orders(order_response: dict) -> list[OrderRecord]:
                 items=items,
                 channel=channel,
                 status=status,
+                # 时段信息此前被丢掉，导致「你 50% 的订单在早餐时段」这类
+                # 结构性事实无从得知。这里如实带上小时，未知则为 None。
+                order_hour=_parse_hour(o.get("createTime")),
             )
         )
 
@@ -590,8 +613,12 @@ class AvailableCoupon(NamedTuple):
     claimed: Optional[bool]  # True=已领取；False=可领取；None=状态无法识别
 
 
-def _available_text(response: Any) -> str:
-    """从 `available-coupons` 的响应中取出可解析的文本。"""
+def _response_text(response: Any) -> str:
+    """从返回 Markdown 文本的工具响应中取出可解析的原文。
+
+    适用于 `available-coupons` 与 `campaign-calendar` —— 这两个工具
+    返回的是 Markdown 而不是 JSON，但都会把原文放在 `raw` 之类的字段里。
+    """
     if isinstance(response, str):
         return response
     if isinstance(response, dict):
@@ -631,7 +658,7 @@ def parse_available_coupons(response: Any) -> list[AvailableCoupon]:
     该工具**不返回** couponId、面值、有效期或商品码 —— 这些一律不臆测。
     缺少状态的券仍会返回，但 `claimed` 为 None（不静默丢弃）。
     """
-    text = _available_text(response)
+    text = _response_text(response)
     if not text:
         return []
 
@@ -780,6 +807,67 @@ def parse_points_products(product_response: dict) -> list[RedeemableItem]:
     return items
 
 
+# --------------------------------------------------------------------------
+# 营销活动日历
+# --------------------------------------------------------------------------
+
+# 「#### 2026年10月15日」或「#### 2026年10月14日 今日」
+_CAL_DAY_RE = re.compile(r"^####\s+(\d{4})年(\d{1,2})月(\d{1,2})日\s*(.*?)\s*$")
+# 「-   **活动标题**：麦当劳 X PEACEMINUSONE」
+_CAL_TITLE_RE = re.compile(r"^-\s+\*\*活动标题\*\*：(.+?)\s*$")
+
+
+def parse_campaign_calendar(response: Any) -> list[CampaignDay]:
+    """解析 `campaign-calendar` 返回的 Markdown 日历。
+
+    ⚠️ 该工具返回的是 **Markdown 文本，不是 JSON**（与 `available-coupons` 同类）。
+    结构形如：
+
+        #### 2026年10月15日
+
+        -   **活动标题**：麦当劳 X PEACEMINUSONE
+            **活动内容介绍**：周边第二弹……
+
+    本函数**只取日期与活动标题**这两样结构化字段。
+    `活动内容介绍` 与图片一律丢弃 —— 那是营销文案，里面的价格
+    （「26.9 元起」「13.9r」）无法核实，也不能用于计算。
+
+    「今日 / 往期回顾」这类标签原样记在 `CampaignDay.label` 里，
+    但**不用它判断** —— 那是采集那一刻的相对标签，录下来后就不再成立。
+    相对时间一律由调用方拿真实日期去比（见 `CampaignDay.status`）。
+
+    日期非法的分节整节跳过，不猜。
+    """
+
+    text = _response_text(response)
+    days: list[CampaignDay] = []
+    current: Optional[CampaignDay] = None
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        m_day = _CAL_DAY_RE.match(line)
+        if m_day:
+            year, month, day = (int(g) for g in m_day.groups()[:3])
+            try:
+                current = CampaignDay(
+                    day=date(year, month, day),
+                    label=m_day.group(4).strip(),
+                )
+            except ValueError:
+                current = None
+                continue
+            days.append(current)
+            continue
+
+        m_title = _CAL_TITLE_RE.match(line)
+        if m_title and current is not None:
+            title = m_title.group(1).strip()
+            if title:
+                current.titles.append(title)
+
+    return days
+
+
 __all__ = [
     "CENTS_PER_YUAN",
     "AvailableCoupon",
@@ -799,6 +887,7 @@ __all__ = [
     "parse_coupon_stock",
     "parse_points_account",
     "parse_points_products",
+    "parse_campaign_calendar",
     "build_menu_price_table",
     "coupon_value_and_cost",
     "coupon_real_value",

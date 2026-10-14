@@ -13,12 +13,14 @@ from datetime import date, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from auditor import (  # noqa: E402
+    MIN_ORDERS_PER_BUCKET,
     CouponStock,
     OrderRecord,
     audit_report,
     consumption_profile,
     coupon_silent_cost,
     render_audit,
+    time_of_day,
 )
 
 
@@ -170,7 +172,79 @@ def main() -> None:
     print()
 
     print("=" * 60)
-    print("6. 空订单处理")
+    print("6. 时段口径（样本不足就不给数字）")
+    print("=" * 60)
+
+    # 菜单是分时段供应的（早餐卖麦满分、正餐卖汉堡），
+    # 所以「几点点的」和「花了多少」一样，都是消费结构的一部分。
+    by_time = [
+        OrderRecord(TODAY - timedelta(days=1), 36.5, ["早餐组合"], "到店",
+                    "订单已完成", 9),   # 早餐
+        OrderRecord(TODAY - timedelta(days=2), 22.0, ["猪柳蛋麦满分"], "到店",
+                    "订单已完成", 8),   # 早餐
+        OrderRecord(TODAY - timedelta(days=3), 25.0, ["巨无霸"], "到店",
+                    "订单已完成", 12),  # 午市
+        OrderRecord(TODAY - timedelta(days=4), 30.0, ["麦辣鸡腿堡"], "到店",
+                    "订单已完成", 13),  # 午市
+        OrderRecord(TODAY - timedelta(days=5), 28.0, ["双层吉士汉堡"], "到店",
+                    "订单已完成", 12),  # 午市
+        OrderRecord(TODAY - timedelta(days=6), 9.0, ["冰美式"], "到店",
+                    "订单已完成", 15),  # 下午（只有 1 单）
+    ]
+    p3 = consumption_profile(by_time, months=1)
+    buckets = {b["name"]: b for b in p3["time_buckets"]}
+
+    print("   时段分布：")
+    for b in p3["time_buckets"]:
+        tail = f"客单价 {b['avg']} 元" if b["reliable"] else "样本不足，未估算"
+        print(f"     {b['name']} · {b['orders']} 单 · 支出 {b['total']} 元 · {tail}")
+
+    assert set(buckets) == {"早餐", "午市", "下午"}, "应按真实时段分桶"
+    assert [b["name"] for b in p3["time_buckets"]] == ["早餐", "午市", "下午"], \
+        "时段应按时间顺序输出（早→晚），而不是按单数排序"
+
+    # 核心契约：不到门槛的时段**拒绝给客单价**。宁可说样本不足，
+    # 也不给一个看起来很精确的假数字。
+    assert buckets["早餐"]["avg"] is None, "早餐只有 2 笔支出，不得给出客单价"
+    assert buckets["早餐"]["reliable"] is False
+    assert buckets["下午"]["avg"] is None, "下午只有 1 笔支出，不得给出客单价"
+    assert buckets["早餐"]["orders"] == 2, "但单数仍要如实报出来"
+    assert MIN_ORDERS_PER_BUCKET == 3, "门槛值变更时请同步本用例的预期"
+
+    # 刚好达到门槛的时段才给数字
+    assert buckets["午市"]["reliable"] is True
+    mid_avg = buckets["午市"]["avg"]
+    assert mid_avg == 27.67, f"午市客单价应为 (25+30+28)/3=27.67，实际 {mid_avg}"
+
+    # 主力时段：3/6 = 50%（≥40%）且单数 ≥ 门槛
+    assert p3["main_bucket"] == "午市", f"主力时段应为午市，实际 {p3['main_bucket']}"
+
+    # 存在样本不足的时段时，必须点出「全局客单价是混合口径」
+    assert any("口径提醒" in i for i in p3["insights"]), \
+        "有样本不足的时段时，必须提示全局客单价是混合口径"
+    print("   [PASS] 样本不足的时段拒绝给客单价，并点出混合口径的风险")
+    print()
+
+    # 小时未知的订单不参与分桶，也不凭空归到某一类
+    p4 = consumption_profile([
+        OrderRecord(TODAY, 20.0, ["巨无霸"], "到店", "订单已完成", 12),
+        OrderRecord(TODAY - timedelta(days=1), 20.0, ["巨无霸"], "到店"),
+    ], months=1)
+    assert len(p4["time_buckets"]) == 1, "小时未知的订单不应凭空归类"
+    assert p4["time_buckets"][0]["orders"] == 1, "只有带小时的订单参与分桶"
+    assert p4["main_bucket"] is None, "单数不足门槛时不得给出主力时段"
+    print("   [PASS] 小时未知的订单不参与分桶，也不凭空归类")
+    print()
+
+    # 时段定义：含跨零点的夜宵
+    assert time_of_day(9) == "早餐" and time_of_day(20) == "晚市"
+    assert time_of_day(23) == "夜宵" and time_of_day(2) == "夜宵"
+    assert time_of_day(None) is None, "小时未知时时段也未知"
+    print("   [PASS] 时段边界正确（含跨零点的夜宵）")
+    print()
+
+    print("=" * 60)
+    print("7. 空订单处理")
     print("=" * 60)
     empty = consumption_profile([])
     print(f"   {empty['insights'][0]}")
@@ -179,7 +253,7 @@ def main() -> None:
     print()
 
     print("=" * 60)
-    print("7. 完整审计报告渲染")
+    print("8. 完整审计报告渲染")
     print("=" * 60)
     report = audit_report(orders, coupons, months=1, today=TODAY)
     print(render_audit(report))

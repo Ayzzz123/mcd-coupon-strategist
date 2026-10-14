@@ -28,9 +28,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
 
 from auditor import audit_report, render_audit  # noqa: E402
+from campaign import audit_campaigns, render_campaigns  # noqa: E402
 from mcd_adapter import (  # noqa: E402
     build_menu_price_table,
     parse_available_coupons,
+    parse_campaign_calendar,
     parse_claimable_coupons,
     parse_combo_from_detail,
     parse_coupon_probes,
@@ -60,6 +62,8 @@ STORE_NAME = "麦当劳南京东城汇餐厅(1990622)"
 FIXTURE_TODAY = date(2026, 10, 12)
 # 积分数据是另一批采集（10-14），按它自己的日期判断兑换截止日
 POINTS_TODAY = date(2026, 10, 14)
+# 活动日历与积分同批采集，所以用同一个「今天」
+CAMPAIGN_TODAY = date(2026, 10, 14)
 
 # demo 场景用到的商品编码（均来自 fixtures/menu.json 的真实菜单）
 CODE_BURGER = "1440"          # 麦辣鸡腿汉堡   22.5
@@ -83,6 +87,16 @@ def load(name: str) -> dict:
         return json.load(f)
 
 
+def load_text(name: str) -> str:
+    """读取 fixtures/ 下的一个文本文件。
+
+    有的 MCP 工具返回 Markdown 而不是 JSON（`available-coupons` /
+    `campaign-calendar`），原文没法塞进 JSON 结构里。
+    """
+    with open(os.path.join(FIXTURES, name), encoding="utf-8") as f:
+        return f.read()
+
+
 MENU = load("menu.json")
 COUPONS = load("coupons.json")
 ORDERS = load("orders.json")
@@ -96,6 +110,8 @@ MEAL_DETAIL = load("meal_detail.json")
 # 积分账户与积分商城（另一批采集：2026-10-14）
 POINTS_ACCOUNT = load("points_account.json")
 POINTS_PRODUCTS = load("points_products.json")
+# 营销活动日历（与积分同批采集）。该工具返回 Markdown 文本，不是 JSON
+CAMPAIGN_CALENDAR = load_text("campaign_calendar.md")
 
 
 # --------------------------------------------------------------------------
@@ -275,15 +291,31 @@ def points_section() -> None:
     print()
 
 
+def campaign_section() -> None:
+    """活动节奏：把活动时间线与券的有效期对起来（纯日期比较）。"""
+    days = parse_campaign_calendar(CAMPAIGN_CALENDAR)
+    # 券与链路 B 用的是同一批数据，这里重新构造一次即可 ——
+    # demo 不是性能敏感场景，保持链路段落之间互不依赖更好读。
+    stock = parse_coupon_stock(
+        COUPONS,
+        menu_prices=build_menu_price_table(MENU),
+        probes=parse_coupon_probes(COUPON_PROBES),
+    )
+    report = audit_campaigns(days, stock, CAMPAIGN_TODAY)
+    print(render_campaigns(report, CAMPAIGN_TODAY))
+    print()
+
+
 def main() -> None:
-    """依次跑通两条链路，再做一次积分体检。"""
+    """依次跑通两条链路，再看活动节奏与积分。"""
     print()
     print("麦麦省钱助手 · 零配置演示")
     print("数据：fixtures/ 中录制的真实 MCP 响应")
-    print("      （主链路 2026-10-12 采集，积分部分 2026-10-14 采集）")
+    print("      （主链路 2026-10-12 采集；活动日历与积分 2026-10-14 采集）")
     print()
     chain_a()
     chain_b()
+    campaign_section()
     points_section()
 
 

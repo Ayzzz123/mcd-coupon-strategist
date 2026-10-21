@@ -311,6 +311,17 @@ def main() -> None:
     assert breakfast.expire_date == date(2026, 10, 15)
     assert breakfast.channel_tags == "到店专用"
 
+    # 星期限制：每张券都有，但和「还剩几天」是两回事。
+    # 「周一至周五」意味着周末用不了 —— 只按日期算天数会高估可用时间。
+    assert fries.weekday_text == "周一至周五", \
+        f"跨日券的星期限制应解析出来，实际 {fries.weekday_text!r}"
+    assert fries.weekdays == frozenset({0, 1, 2, 3, 4})
+    assert breakfast.weekday_text == "周四", "单日券的星期就是那一天"
+    # 生效日必须与截止日分开：早餐券今天（10-14）还没生效，不是「今天不生效」
+    assert breakfast.valid_from == date(2026, 10, 15), \
+        f"单日券的生效日应被解析，实际 {breakfast.valid_from}"
+    assert breakfast.valid_from == breakfast.expire_date
+
     assert all("mcd-portal" not in (c.channel_tags or "") for c in my), \
         "图片链接不应混进解析结果"
     print("   [PASS] 9 张券全部解析；同名不同期的券各自保留")

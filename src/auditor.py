@@ -29,7 +29,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 
@@ -52,6 +52,19 @@ class CouponStock:
     validity_text: str = ""  # 有效期原文（含时段与星期限制）
     day_window: str = ""  # 单日券的可用时段（如 "05:00-10:29"）；跨日券为空
     channel_tags: str = ""  # 可用渠道标签原文（如「到店专用、外送专用」）
+    weekdays: frozenset = frozenset()  # 可用星期（0=周一）；空集=不限
+    weekday_text: str = ""  # 星期限制的可读描述（如「周一至周五」）
+    valid_from: Optional[date] = None  # 生效日（早餐券可能明天才开始生效）
+
+    def is_usable_on(self, day: date) -> Optional[bool]:
+        """这张券在指定日期能否使用。
+
+        返回 None 表示**没有星期限制**（任何一天都能用），
+        而不是「不能用」—— 两者含义完全不同，不要混。
+        """
+        if not self.weekdays:
+            return None
+        return day.weekday() in self.weekdays
 
     def days_left(self, today: Optional[date] = None) -> Optional[int]:
         """距过期还有几天。无有效期则返回 None。"""
@@ -133,6 +146,34 @@ def time_of_day(hour: Optional[int]) -> Optional[str]:
 # --------------------------------------------------------------------------
 # 券的沉默成本
 # --------------------------------------------------------------------------
+
+
+def count_unusable_days(coupon: CouponStock, today: date) -> int:
+    """券的**有效期内**，有多少天因星期限制而用不了。
+
+    券常带星期限制（如「周一至周五」），周末就用不了。只报「还剩 N 天」
+    会让周五的用户以为周末还能用 —— 实际只剩当天。
+
+    ⚠️ 必须从「今天与生效日中的较晚者」开始数。单日券（如只有 10-15 当天
+    有效）在今天看来「用不了」，是因为它**还没生效**，不是因为它不生效 ——
+    这两种情况必须分开，否则会报出「剩余期里有 1 天用不了」这种误导。
+
+    无星期限制、或没有截止日时返回 0。
+    """
+    if not coupon.weekdays or coupon.expire_date is None:
+        return 0
+
+    start = today
+    if coupon.valid_from is not None and coupon.valid_from > start:
+        start = coupon.valid_from
+
+    unusable = 0
+    day = start
+    while day <= coupon.expire_date:
+        if day.weekday() not in coupon.weekdays:
+            unusable += 1
+        day += timedelta(days=1)
+    return unusable
 
 
 def coupon_silent_cost(
@@ -234,10 +275,12 @@ def coupon_silent_cost(
                 "value": c.value,
                 "days_left": c.days_left(today),
                 "threshold": c.threshold,
-                # 账户券才有这两项（时段限制与渠道标签），门店券接口不提供。
+                # 账户券才有这几项（时段 / 星期 / 渠道），门店券接口不提供。
                 # 早餐券常常只有当天早上两三个小时能用，这个限制必须让用户看见。
                 "day_window": c.day_window,
                 "channel_tags": c.channel_tags,
+                "weekday_text": c.weekday_text,
+                "unusable_days": count_unusable_days(c, today),
             }
             for c in at_risk
         ],
@@ -532,17 +575,30 @@ def render_audit(report: dict) -> str:
                 value_txt = "价值未知（菜单中无对应商品，未估算）"
             lines.append(f"    · {it['name']}  {value_txt}  {when}{th}")
 
-            # 时段与渠道限制只对**真的有限制**的券显示 ——
+            # 时段 / 星期 / 渠道限制只对**真的有限制**的券显示 ——
             # 同时标着「到店专用、外送专用」的券其实是通用的，写了也没信息量。
             # 而早餐券常常只有当天早上两三个小时能用，这个限制必须让用户看见。
             limits: list[str] = []
-            if it.get("day_window"):
-                limits.append(f"仅 {it['day_window']} 可用")
+            window = it.get("day_window") or ""
+            weekdays = it.get("weekday_text") or ""
+            if window:
+                when = f"{weekdays} {window}".strip() if weekdays else window
+                limits.append(f"仅 {when} 可用")
+            elif weekdays and weekdays != "每天":
+                limits.append(f"{weekdays} 可用")
+
             tags = it.get("channel_tags") or ""
             if tags and not ("到店" in tags and "外送" in tags):
                 limits.append(tags)
+
             if limits:
-                lines.append(f"      {' · '.join(limits)}")
+                line = " · ".join(limits)
+                unusable = it.get("unusable_days") or 0
+                if unusable:
+                    # 「还剩 N 天」里有几天券根本不生效 —— 必须说清，
+                    # 否则用户会按剩余天数安排，最后发现那些天用不了。
+                    line += f"（剩余期里有 {unusable} 天用不了）"
+                lines.append(f"      {line}")
 
         if len(at_risk) > 5:
             lines.append(f"    …… 另有 {len(at_risk) - 5} 张（为控制篇幅未展开）")
@@ -630,6 +686,7 @@ __all__ = [
     "coupon_silent_cost",
     "consumption_profile",
     "audit_report",
+    "count_unusable_days",
     "render_audit",
     "time_of_day",
 ]

@@ -18,6 +18,7 @@ from auditor import (  # noqa: E402
     OrderRecord,
     audit_report,
     consumption_profile,
+    count_unusable_days,
     coupon_silent_cost,
     render_audit,
     time_of_day,
@@ -263,6 +264,42 @@ def main() -> None:
     assert report["profile"]["order_count"] == 4
     print("[PASS] 审计报告生成正确")
     print()
+    print("=" * 60)
+    print("9. 券的时间限制（星期限制 + 生效日）")
+    print("=" * 60)
+
+    # 跨日券 + 工作日限制：周五看来「还剩 2 天」，但那两天是周末，券不生效。
+    # 只报天数会让用户按剩余天数安排，最后发现用不了。
+    fri = date(2026, 10, 16)
+    weekday_only = CouponStock(
+        "W1", "工作日券", 10.0, date(2026, 10, 18),
+        weekdays=frozenset({0, 1, 2, 3, 4}), weekday_text="周一至周五",
+        valid_from=date(2026, 10, 9),
+    )
+    assert count_unusable_days(weekday_only, fri) == 2, \
+        "周六、周日两天券不生效，应数出 2 天"
+    assert weekday_only.is_usable_on(fri) is True
+    assert weekday_only.is_usable_on(date(2026, 10, 17)) is False, "周六用不了"
+
+    # 单日券今天还没生效 —— 那是「没开始」，不是「不生效」。
+    # 混为一谈会报出「剩余期里有 1 天用不了」，而实际只有那 1 天能用。
+    single = CouponStock(
+        "W2", "单日早餐券", 9.0, date(2026, 10, 15),
+        weekdays=frozenset({3}), weekday_text="周四",
+        valid_from=date(2026, 10, 15), day_window="05:00-10:29",
+    )
+    assert count_unusable_days(single, date(2026, 10, 14)) == 0, \
+        "今天不在券的有效期内 ≠ 券不生效，不能算作「用不了」"
+    assert single.is_usable_on(date(2026, 10, 15)) is True
+
+    # 没有星期限制：返回 None（不限），不能与 False（不能）混淆
+    free = CouponStock("W3", "不限星期的券", 5.0, date(2026, 10, 18))
+    assert free.is_usable_on(fri) is None, "无星期限制应返回 None，而不是 False"
+    assert count_unusable_days(free, fri) == 0
+    print("   [PASS] 周末不生效的天数被数出来；单日券未生效不算「用不了」")
+    print("   [PASS] 无星期限制返回 None（不限），不与 False（不能）混淆")
+    print()
+
     print("=" * 60)
     print("全部审计模块测试通过")
     print("=" * 60)

@@ -882,6 +882,62 @@ _MY_PRICE_RE = re.compile(r"[¥￥]\s*(\d+(?:\.\d+)?)")
 _MY_RANGE_RE = re.compile(
     r"(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})"
 )
+# 「周一、二、三、四、五」/「周四」—— 星期限制
+_WEEKDAY_RE = re.compile(r"周([一二三四五六日天](?:、[一二三四五六日天])*)")
+_WEEKDAY_INDEX = {
+    "一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6,
+}
+_WEEKDAY_NAME = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+
+class Validity(NamedTuple):
+    """券的有效期结构 —— 从接口给的原文里解析出来。
+
+    `valid_from` 和 `expire` 必须分开：早餐券常常是**单日券**
+    （只有明天 05:00-10:29 有效），今天看来「用不了」是因为它还没生效，
+    不是因为它不生效。混在一起会报出误导性的结论。
+    """
+
+    valid_from: Optional[date] = None  # 生效日
+    expire: Optional[date] = None  # 截止日
+    day_window: str = ""  # 单日券的可用时段（如 "05:00-10:29"）
+    weekdays: frozenset = frozenset()  # 可用星期（0=周一）；空集=不限
+    weekday_text: str = ""  # 星期限制的可读描述
+
+
+def _parse_weekdays(validity: str) -> tuple[frozenset, str]:
+    """从有效期原文取出**星期限制**，返回（可用星期集合, 可读描述）。
+
+    券的有效期常常带星期限制，例如「周一、二、三、四、五 10:30-23:59」
+    意味着**周末用不了**。只按日期算「还剩几天」会高估可用时间 ——
+    周五的用户会以为周末还能用，实际只剩当天。
+
+    没有星期限制时返回 ``(frozenset(), "")``。
+    """
+    m = _WEEKDAY_RE.search(validity)
+    if not m:
+        return frozenset(), ""
+
+    days = frozenset(
+        _WEEKDAY_INDEX[ch]
+        for ch in m.group(1).replace("、", "")
+        if ch in _WEEKDAY_INDEX
+    )
+    if not days:
+        return frozenset(), ""
+    return days, _describe_weekdays(days)
+
+
+def _describe_weekdays(days: frozenset) -> str:
+    """把星期集合写成中文。连续的写成「周一至周五」，否则逐个列出。"""
+    ordered = sorted(days)
+    if len(ordered) == 7:
+        return "每天"
+    if len(ordered) == 1:
+        return _WEEKDAY_NAME[ordered[0]]
+    if ordered == list(range(ordered[0], ordered[0] + len(ordered))):
+        return f"{_WEEKDAY_NAME[ordered[0]]}至{_WEEKDAY_NAME[ordered[-1]]}"
+    return "、".join(_WEEKDAY_NAME[d] for d in ordered)
 
 
 def parse_my_coupons(
@@ -948,27 +1004,41 @@ def _split_my_coupon_blocks(text: str) -> list[dict]:
     return [b for b in blocks if b.get("名称")]
 
 
-def _parse_validity(validity: str) -> tuple[Optional[date], str]:
-    """解析有效期原文，返回（截止日, 单日券的可用时段）。
+def _parse_validity(validity: str) -> Validity:
+    """解析有效期原文，返回 `Validity`（生效日 / 截止日 / 时段 / 星期）。
 
     有效期形如：
 
         "2026-10-12 10:30-2026-10-16 23:59 周一、二、三、四、五 10:30-23:59"   ← 跨日
         "2026-10-15 05:00-2026-10-15 10:29 周四 05:00-10:29"                  ← 单日
 
-    单日券的**时段限制很关键**（早餐券只有 05:00-10:29 能用），
-    所以单独取出返回；跨日券的时段没有意义，返回空串。
+    两个限制都要取出来，而且性质不同：
+
+    - **单日券的时段**（早餐券只有 05:00-10:29 能用）—— 跨日券没有这项，
+      因为它的时段每天都一样，写出来也没信息量。
+    - **星期限制**（「周一至周五」= 周末不能用）—— 两类券都可能有。
+      只按日期算「还剩几天」会高估可用时间。
     """
+    weekdays, weekday_text = _parse_weekdays(validity)
+
     m = _MY_RANGE_RE.search(validity)
     if m:
         start_date, start_time, end_date, end_time = m.groups()
-        expire = _parse_datetime(end_date)
-        window = f"{start_time}-{end_time}" if start_date == end_date else ""
-        return expire, window
+        return Validity(
+            valid_from=_parse_datetime(start_date),
+            expire=_parse_datetime(end_date),
+            day_window=f"{start_time}-{end_time}" if start_date == end_date else "",
+            weekdays=weekdays,
+            weekday_text=weekday_text,
+        )
 
     # 退回：只按日期取最后一个
     dates = _DATE_RE.findall(validity)
-    return (_parse_datetime(dates[-1]) if dates else None), ""
+    return Validity(
+        expire=_parse_datetime(dates[-1]) if dates else None,
+        weekdays=weekdays,
+        weekday_text=weekday_text,
+    )
 
 
 def _build_account_coupon(
@@ -983,7 +1053,7 @@ def _build_account_coupon(
     coupon_price = float(m_price.group(1)) if m_price else 0.0
 
     validity = block.get("有效期", "")
-    expire, day_window = _parse_validity(validity)
+    period = _parse_validity(validity)
 
     # 价值优先级：已实测（同名券）> 菜单反查 > 0（如实标注「未知」）
     reverse_value, fallback_required = coupon_value_and_cost(name, menu_prices)
@@ -995,13 +1065,16 @@ def _build_account_coupon(
         coupon_id="",  # 该接口不返回 couponId
         name=name,
         value=value,
-        expire_date=expire,
+        expire_date=period.expire,
         threshold=_threshold_of(name),
         # 「用券价格」是接口直给的触发成本，优先于菜单反查的结果
         required_spend=coupon_price or fallback_required,
         validity_text=validity,
-        day_window=day_window,
+        day_window=period.day_window,
         channel_tags=block.get("标签", ""),
+        weekdays=period.weekdays,
+        weekday_text=period.weekday_text,
+        valid_from=period.valid_from,
     )
 
 
@@ -1009,6 +1082,7 @@ __all__ = [
     "CENTS_PER_YUAN",
     "AvailableCoupon",
     "CouponProbe",
+    "Validity",
     "cents_to_yuan",
     "parse_meal_to_item",
     "parse_menu",

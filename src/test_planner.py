@@ -209,7 +209,9 @@ def main() -> None:
 
     rich = plan_redemption(pool, 13.0, frequency=1.0, today=TODAY)
     print(f"   频率 1.0 → 机会 {rich.opportunities} 次，排不上 {len(rich.missed)} 张")
-    assert rich.opportunities == 20 and not rich.missed
+    # 窗口 days_left=20 覆盖 today..today+20 共 21 个日历日，频率 1 单/天 → 21 次。
+    # （原实现按 20 算，漏了今天那一天 —— 顺手修正。）
+    assert rich.opportunities == 21 and not rich.missed
     assert rich.captured == 10.0
 
     none = plan_redemption(pool, 13.0, frequency=0.0, today=TODAY)
@@ -248,6 +250,44 @@ def main() -> None:
         assert key in schedule_text, f"排程渲染缺少「{key}」"
     print("[PASS] 排程渲染包含全部关键信息")
     print()
+
+    print("=" * 60)
+    print("11. 星期限制会削减可用机会")
+    print("=" * 60)
+
+    # 周五发一张「只能工作日用」的券，周日到期：窗口 3 个日历日（五、六、日），
+    # 但券只有周五能用 → 能用券的天数是 1，不是 3。
+    # 按自然日算机会数会高估「你还能用掉几张券」。
+    fri = date(2026, 10, 16)
+    weekday = plan_redemption(
+        [CouponStock("w", "工作日券", 10.0, date(2026, 10, 18),
+                     weekdays=frozenset({0, 1, 2, 3, 4}),
+                     weekday_text="周一至周五",
+                     valid_from=date(2026, 10, 16))],
+        natural_spend=0.0, frequency=1.0, today=fri,
+    )
+    print(f"   工作日券：窗口 {weekday.window_days} 天 · "
+          f"能用券 {weekday.usable_days} 天 → 机会 {weekday.opportunities} 次")
+    assert weekday.usable_days == 1, \
+        f"周五起 3 个日历日里券只有 1 天能用，实际 {weekday.usable_days}"
+    assert weekday.opportunities == 1, "机会数应按时段可用的天数算"
+
+    # 同样窗口，但券不限星期 → 3 天都能用
+    anytime = plan_redemption(
+        [CouponStock("x", "不限星期的券", 10.0, date(2026, 10, 18))],
+        natural_spend=0.0, frequency=1.0, today=fri,
+    )
+    print(f"   不限星期：能用券 {anytime.usable_days} 天 → "
+          f"机会 {anytime.opportunities} 次")
+    assert anytime.usable_days == 3, "券不受星期限制时，3 个日历日都能用"
+    assert anytime.opportunities == 3
+
+    # 窗口里有不可用日时，渲染必须说明，否则用户不知道机会被削减了
+    assert "只有 1 天能用券" in render_schedule(weekday), \
+        "窗口里有不可用日时，渲染必须说明"
+    print("   [PASS] 星期限制削减可用机会，并在渲染里如实说明")
+    print()
+
     print("=" * 60)
     print("全部券包体检与用券排程测试通过")
     print("=" * 60)

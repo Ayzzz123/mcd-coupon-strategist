@@ -176,6 +176,20 @@ def count_unusable_days(coupon: CouponStock, today: date) -> int:
     return unusable
 
 
+def is_coupon_usable_on(coupon: CouponStock, day: date) -> bool:
+    """这张券在某一天是否**真的能用**（生效日、截止日、星期同时满足）。
+
+    与 `CouponStock.is_usable_on()` 的分工：那个只回答「星期对不对」，
+    返回 None 表示不限；这个给出确定的能 / 不能，把三个条件一起判掉。
+    排程要靠它算「窗口里到底有几天能用券」。
+    """
+    if coupon.valid_from is not None and day < coupon.valid_from:
+        return False
+    if coupon.expire_date is not None and day > coupon.expire_date:
+        return False
+    return coupon.is_usable_on(day) is not False  # None（不限）也算能用
+
+
 def coupon_silent_cost(
     coupons: list[CouponStock],
     today: Optional[date] = None,
@@ -687,6 +701,7 @@ __all__ = [
     "consumption_profile",
     "audit_report",
     "count_unusable_days",
+    "is_coupon_usable_on",
     "render_audit",
     "time_of_day",
 ]

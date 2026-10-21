@@ -51,10 +51,10 @@ unknown    无法判断 —— 券面无法反查到原价，按铁律不估算
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional, Sequence
 
-from auditor import CouponStock, OrderRecord
+from auditor import CouponStock, OrderRecord, is_coupon_usable_on
 
 CATEGORY_DIRECT = "direct"
 CATEGORY_STRETCH = "stretch"
@@ -91,6 +91,9 @@ class CouponVerdict:
     net_value: float  # 净价值（元）
     category: str
     days_left: Optional[int] = None  # 距过期天数；None 表示无期限
+    # 回指原始券对象 —— 排程要用它的星期限制算「哪天真的能用」。
+    # 只靠 coupon_id 找不回来：账户券根本没有 couponId。
+    coupon: Optional[CouponStock] = None
 
     @property
     def label(self) -> str:
@@ -147,6 +150,7 @@ def classify_coupon(
             net_value=0.0,
             category=CATEGORY_UNKNOWN,
             days_left=days_left,
+            coupon=coupon,
         )
 
     baseline = max(natural_spend, 0.0)
@@ -169,6 +173,7 @@ def classify_coupon(
         net_value=net,
         category=category,
         days_left=days_left,
+        coupon=coupon,
     )
 
 
@@ -406,6 +411,7 @@ class RedemptionPlan:
     missed: list[CouponVerdict]  # 有净价值却排不上（注定浪费）
     unjudgeable: list[CouponVerdict]  # 券面价值无法反查
     expired: list[CouponVerdict]  # 已过期
+    usable_days: int = 0  # 窗口内**至少有一张券能用**的天数
 
     @property
     def captured(self) -> float:
@@ -432,6 +438,25 @@ def order_frequency(orders: Sequence[OrderRecord], observation_days: int) -> flo
     if observation_days <= 0:
         return 0.0
     return len(orders) / observation_days
+
+
+def _count_usable_days(
+    coupons: list[CouponStock],
+    start: date,
+    last_day: date,
+) -> int:
+    """窗口内「至少有一张券能用」的天数。
+
+    只看星期与有效期，不看价值 —— 那一天只要有券可用，就有一次用券机会，
+    哪怕最后排上去的是另一张券。
+    """
+    total = 0
+    day = start
+    while day <= last_day:
+        if any(is_coupon_usable_on(c, day) for c in coupons):
+            total += 1
+        day += timedelta(days=1)
+    return total
 
 
 def plan_redemption(
@@ -471,6 +496,8 @@ def plan_redemption(
         elif verdict.is_realizable:
             usable.append(verdict)
 
+    today = today or date.today()
+
     window_days = 0
     if usable:
         window_days = max(
@@ -478,9 +505,24 @@ def plan_redemption(
             for v in usable
         )
 
+    # 窗口覆盖 today .. today+window_days，共 calendar_days 个日历日。
+    # 但券常带星期限制（如「周一至周五」= 周末不可用），那些天用不了券 ——
+    # 按自然日算机会数会高估「你还能用掉几张券」。
+    calendar_days = window_days + 1
+    window_coupons = [v.coupon for v in usable if v.coupon is not None]
+    if window_coupons:
+        usable_days = _count_usable_days(
+            window_coupons, today, today + timedelta(days=window_days)
+        )
+    else:
+        usable_days = calendar_days
+
+    # 机会数 = 「能用券的天数 × 点单频率」。这同时修掉了一个既有偏差：
+    # 原来的 `window_days × 频率` 少算了今天（天数口径是「还剩 N 天」，
+    # 但实际覆盖 N+1 个日历日）。
     opportunities = 0
-    if usable and window_days > 0 and frequency > 0:
-        opportunities = max(1, int(window_days * frequency))
+    if usable and usable_days > 0 and frequency > 0:
+        opportunities = max(1, int(usable_days * frequency))
 
     # 净价值从高到低；价值相同时，先安排更早过期的
     usable.sort(key=lambda v: (-v.net_value, v.days_left or 9999))
@@ -498,6 +540,7 @@ def plan_redemption(
         missed=usable[opportunities:],
         unjudgeable=unjudgeable,
         expired=expired,
+        usable_days=usable_days,
     )
 
 
@@ -523,8 +566,14 @@ def render_schedule(plan: RedemptionPlan) -> str:
         lines += [_RULE, "先积累几单历史，才能推算你还会点几次。"]
         return "\n".join(lines).rstrip()
 
+    # 窗口按自然日算；但券可能只在某些天生效（如「周一至周五」），
+    # 那些用不了的日子不该算进机会，否则会高估「还能用掉几张券」。
+    window_note = "券全部过期前"
+    calendar_days = plan.window_days + 1
+    if plan.usable_days and plan.usable_days < calendar_days:
+        window_note = f"券全部过期前，其中只有 {plan.usable_days} 天能用券"
     lines.append(
-        f"  窗口 {plan.window_days} 天（券全部过期前）"
+        f"  窗口 {plan.window_days} 天（{window_note}）"
         f" · 点单频率 {round(plan.frequency, 3)} 单/天"
     )
     lines.append(
